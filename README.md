@@ -3,7 +3,7 @@
 Community-driven containers for **VersaNode** (RPi CM5, `arm64`).  
 All package names are prefixed with `vncp-` (VersaNode Controller Package).
 
-**Images on GHCR:** `ghcr.io/<your-org>/vncp-<package>:latest`
+**Images on GHCR:** `ghcr.io/versanode/vncp-<package>:latest`
 
 **Shared network:** All services join an external Docker network named `versanode` so they can reach each other by service name.
 
