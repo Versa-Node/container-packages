@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  lint-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install deps
+        run: pip install pyyaml
+      - name: Validate packages
+        run: python tools/validate.py
+      - name: Compose validate
+        run: |
+          for f in packages/*/docker-compose.example.yml; do
+            [ -f "$f" ] && docker compose -f "$f" config >/dev/null || true
+          done
