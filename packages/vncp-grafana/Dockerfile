@@ -1,0 +1,2 @@
+FROM docker.io/grafana/grafana-oss:latest
+LABEL org.opencontainers.image.title="vncp-grafana"           org.opencontainers.image.source="https://github.com/Versa-Node/container-packages"           org.opencontainers.image.keywords="versanode-controller-package,versanode,controller,package"           io.versanode.kind="controller-package"           org.opencontainers.image.documentation="https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-grafana#readme"

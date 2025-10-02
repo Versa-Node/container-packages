@@ -1,0 +1,16 @@
+name: vncp-zigbee2mqtt
+description: 
+arch: [linux/arm64, linux/amd64]
+maintainers:
+  - name: Community
+    github: versanode-community
+upstream:
+  image: docker.io/koenkk/zigbee2mqtt:latest
+ports: []
+volumes: []
+env: []
+healthcheck:
+  test: ["CMD", "bash", "-lc", "nc -z localhost 8080"]
+  interval: 30s
+  timeout: 5s
+  retries: 5

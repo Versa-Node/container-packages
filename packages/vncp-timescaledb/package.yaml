@@ -1,0 +1,21 @@
+name: vncp-timescaledb
+description: TimescaleDB (PostgreSQL 16) time-series database
+arch: [linux/arm64, linux/amd64]
+maintainers:
+  - name: Community
+    github: versanode-community
+upstream:
+  image: timescale/timescaledb:latest-pg16
+ports:
+  - "5432:5432"
+volumes:
+  - "./data:/var/lib/postgresql/data"
+env:
+  - "POSTGRES_USER=postgres"
+  - "POSTGRES_PASSWORD=postgres"
+  - "POSTGRES_DB=app"
+healthcheck:
+  test: ["CMD", "pg_isready", "-U", "postgres"]
+  interval: 30s
+  timeout: 5s
+  retries: 5

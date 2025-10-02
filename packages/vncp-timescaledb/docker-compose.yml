@@ -1,0 +1,26 @@
+services:
+  vncp-timescaledb:
+    image: ghcr.io/versa-node/vncp-timescaledb:latest
+    container_name: vncp-timescaledb
+    restart: unless-stopped
+    env_file: ./.env
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-app}
+      - TIMESCALEDB_TELEMETRY=${TIMESCALEDB_TELEMETRY:-off}
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-postgres}"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks: [versanode]
+
+networks:
+  versanode:
+    external: true
+    name: versanode

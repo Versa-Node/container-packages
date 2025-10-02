@@ -1,0 +1,28 @@
+version: 1
+metadata:
+  id: vncp-esphome
+  name: ESPHome
+  summary: ESPHome dashboard for ESP8266/ESP32
+  website: https://esphome.io/
+parameters:
+  - key: ESPHOME_PORT
+    label: Dashboard port
+    type: port
+    description: Host port for ESPHome dashboard
+    default: 6052
+  - key: ESPHOME_USER
+    label: Dashboard username
+    type: string
+    description: Optional dashboard auth username
+    default: ""
+  - key: ESPHOME_PASSWORD
+    label: Dashboard password
+    type: password
+    description: Optional dashboard auth password
+    default: ""
+    secret: true
+mappings:
+  env: [ ESPHOME_PORT, ESPHOME_USER, ESPHOME_PASSWORD ]
+  files: []
+notes:
+  - "Use host networking if you need local discovery during flashing."

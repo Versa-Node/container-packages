@@ -1,0 +1,2 @@
+FROM docker.io/timescale/timescaledb:latest-pg16
+LABEL org.opencontainers.image.title="vncp-timescaledb"       org.opencontainers.image.source="https://github.com/Versa-Node/container-packages"       org.opencontainers.image.keywords="versanode-controller-package,versanode,controller,package,timescaledb,postgres"       io.versanode.kind="controller-package"       org.opencontainers.image.documentation="https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-timescaledb#readme"

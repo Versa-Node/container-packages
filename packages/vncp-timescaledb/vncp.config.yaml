@@ -1,0 +1,46 @@
+version: 1
+metadata:
+  id: vncp-timescaledb
+  name: TimescaleDB
+  summary: TimescaleDB (PostgreSQL 16) time-series database
+  website: https://www.timescale.com/
+parameters:
+  - key: PG_PORT
+    label: Host Port
+    type: port
+    description: Port exposed on the host
+    default: 5432
+  - key: POSTGRES_USER
+    label: Username
+    type: string
+    description: Database superuser name
+    default: postgres
+    required: true
+  - key: POSTGRES_PASSWORD
+    label: Password
+    type: password
+    description: Database superuser password
+    default: postgres
+    required: true
+    secret: true
+  - key: POSTGRES_DB
+    label: Database
+    type: string
+    description: Default database to create
+    default: app
+  - key: DATA_PATH
+    label: Data path (host)
+    type: path
+    description: Host folder for PostgreSQL data
+    default: ./data
+  - key: TIMESCALEDB_TELEMETRY
+    label: Telemetry
+    type: enum
+    description: Enable or disable TimescaleDB telemetry
+    enum: [ on, off ]
+    default: off
+mappings:
+  env: [ PG_PORT, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, TIMESCALEDB_TELEMETRY ]
+  files: []
+notes:
+  - "Enable the extension in your DB after first start: CREATE EXTENSION IF NOT EXISTS timescaledb;"

@@ -1,0 +1,25 @@
+version: 1
+metadata:
+  id: vncp-nginx-proxy-manager
+  name: Nginx Proxy Manager
+  summary: Simple reverse proxy with SSL certificates
+  website: https://nginxproxymanager.com/
+parameters:
+  - key: NPM_HTTP_PORT
+    label: HTTP port
+    type: port
+    description: Public HTTP port
+    default: 80
+  - key: NPM_HTTPS_PORT
+    label: HTTPS port
+    type: port
+    description: Public HTTPS port
+    default: 443
+  - key: NPM_ADMIN_PORT
+    label: Admin UI port
+    type: port
+    description: Port for the admin dashboard
+    default: 81
+mappings:
+  env: [ NPM_HTTP_PORT, NPM_HTTPS_PORT, NPM_ADMIN_PORT ]
+  files: []

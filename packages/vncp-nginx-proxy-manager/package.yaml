@@ -1,0 +1,16 @@
+name: vncp-nginx-proxy-manager
+description: 
+arch: [linux/arm64, linux/amd64]
+maintainers:
+  - name: Community
+    github: versanode-community
+upstream:
+  image: docker.io/jc21/nginx-proxy-manager:latest
+ports: []
+volumes: []
+env: []
+healthcheck:
+  test: ["CMD", "bash", "-lc", "nc -z localhost 81"]
+  interval: 30s
+  timeout: 5s
+  retries: 5

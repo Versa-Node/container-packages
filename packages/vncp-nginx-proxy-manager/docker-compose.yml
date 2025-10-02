@@ -1,0 +1,25 @@
+services:
+  vncp-nginx-proxy-manager:
+    image: ghcr.io/versa-node/vncp-nginx-proxy-manager:latest
+    container_name: vncp-nginx-proxy-manager
+    restart: unless-stopped
+    env_file: ./.env
+
+    ports:
+      - "${NPM_HTTP_PORT:-80}:80"
+      - "${NPM_HTTPS_PORT:-443}:443"
+      - "${NPM_ADMIN_PORT:-81}:81"
+    volumes:
+      - ./data:/data
+      - ./letsencrypt:/etc/letsencrypt
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "nc -z localhost 81"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks: [versanode]
+
+networks:
+  versanode:
+    external: true
+    name: versanode

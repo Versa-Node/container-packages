@@ -1,0 +1,16 @@
+name: vncp-influxdb
+description: 
+arch: [linux/arm64, linux/amd64]
+maintainers:
+  - name: Community
+    github: versanode-community
+upstream:
+  image: docker.io/influxdb:2
+ports: []
+volumes: []
+env: []
+healthcheck:
+  test: ["CMD", "bash", "-lc", "wget -qO- http://localhost:8086/health | grep -q pass"]
+  interval: 30s
+  timeout: 5s
+  retries: 5

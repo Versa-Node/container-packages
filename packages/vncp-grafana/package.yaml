@@ -1,0 +1,16 @@
+name: vncp-grafana
+description: 
+arch: [linux/arm64, linux/amd64]
+maintainers:
+  - name: Community
+    github: versanode-community
+upstream:
+  image: docker.io/grafana/grafana-oss:latest
+ports: []
+volumes: []
+env: []
+healthcheck:
+  test: ["CMD", "bash", "-lc", "nc -z localhost 3000"]
+  interval: 30s
+  timeout: 5s
+  retries: 5
