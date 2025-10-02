@@ -1,0 +1,16 @@
+name: template
+description: Replace me with a short one-liner
+arch: [linux/arm64, linux/amd64]
+maintainers:
+  - name: Your Name
+    github: yourhandle
+upstream:
+  image: ""   # e.g., ghcr.io/org/image:tag (leave empty if using Dockerfile)
+ports: []
+volumes: []
+env: []
+healthcheck:
+  test: ["CMD", "true"]
+  interval: 30s
+  timeout: 5s
+  retries: 1

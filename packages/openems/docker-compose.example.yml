@@ -1,0 +1,13 @@
+services:
+  openems:
+    image: ghcr.io/versanode/openems:latest
+    restart: unless-stopped
+    ports:
+      - "8075:8075"
+    volumes:
+      - ./data:/var/openems
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "nc -z localhost 8075"]
+      interval: 30s
+      timeout: 5s
+      retries: 5

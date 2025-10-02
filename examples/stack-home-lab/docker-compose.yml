@@ -1,0 +1,45 @@
+services:
+  mosquitto:
+    image: ghcr.io/versanode/mosquitto:latest
+    container_name: mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+
+  nodered:
+    image: ghcr.io/versanode/nodered:latest
+    container_name: nodered
+    restart: unless-stopped
+    ports:
+      - "1880:1880"
+    volumes:
+      - ./nodered/data:/data
+    depends_on:
+      - mosquitto
+
+  homeassistant:
+    image: ghcr.io/versanode/home-assistant:latest
+    container_name: homeassistant
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    volumes:
+      - ./homeassistant/config:/config
+
+  nas:
+    build: ../../packages/nas-samba
+    container_name: nas-samba
+    restart: unless-stopped
+    environment:
+      - SAMBA_USER=${SAMBA_USER:-user}
+      - SAMBA_PASS=${SAMBA_PASS:-pass}
+      - SAMBA_SHARE_NAME=${SAMBA_SHARE_NAME:-share}
+    ports:
+      - "445:445"
+    volumes:
+      - ./nas/data:/shares/${SAMBA_SHARE_NAME:-share}

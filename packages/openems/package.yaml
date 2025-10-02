@@ -1,0 +1,18 @@
+name: openems
+description: OpenEMS Edge (starter package)
+arch: [linux/arm64, linux/amd64]
+maintainers:
+  - name: Community
+    github: versanode-community
+upstream:
+  image: openems/openems:latest
+ports:
+  - "8075:8075"
+volumes:
+  - "./data:/var/openems"
+env: []
+healthcheck:
+  test: ["CMD", "bash", "-lc", "nc -z localhost 8075"]
+  interval: 30s
+  timeout: 5s
+  retries: 5

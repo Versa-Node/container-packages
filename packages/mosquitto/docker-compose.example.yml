@@ -1,0 +1,16 @@
+services:
+  mosquitto:
+    image: ghcr.io/versanode/mosquitto:latest
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./config:/mosquitto/config
+      - ./data:/mosquitto/data
+      - ./log:/mosquitto/log
+    healthcheck:
+      test: ["CMD", "mosquitto_ctrl", "status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
