@@ -1,0 +1,29 @@
+services:
+  vncp-apn:
+    image: ghcr.io/<your-org>/vncp-apn:latest
+    container_name: vncp-apn
+    restart: unless-stopped
+    env_file: ./.env
+
+    privileged: true
+    cap_add: [NET_ADMIN, SYS_ADMIN]
+    devices:
+      - "${MODEM_DEV:-/dev/ttyUSB0}:${MODEM_DEV:-/dev/ttyUSB0}"
+    environment:
+      - APN_NAME=${APN_NAME:-internet}
+      - APN_USER=${APN_USER:-}
+      - APN_PASSWORD=${APN_PASSWORD:-}
+      - DIAL_NUMBER=${DIAL_NUMBER:-*99#}
+      - MODEM_DEV=${MODEM_DEV:-/dev/ttyUSB0}
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "ping -c1 -W2 8.8.8.8 >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+
+    networks: [versanode]
+
+networks:
+  versanode:
+    external: true
+    name: versanode

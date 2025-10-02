@@ -1,0 +1,27 @@
+version: 1
+metadata:
+  id: vncp-nodered
+  name: Node-RED
+  summary: Flow-based development tool
+  website: https://nodered.org
+parameters:
+  - key: NODERED_PORT
+    label: HTTP Port
+    type: port
+    description: Port to expose Node-RED editor/UI
+    default: 1880
+  - key: TZ
+    label: Timezone
+    type: string
+    description: Container timezone (e.g., Europe/Amsterdam)
+    default: UTC
+  - key: ENABLE_PROJECTS
+    label: Enable Projects
+    type: bool
+    description: Enable Node-RED Projects feature
+    default: false
+mappings:
+  env: [ NODERED_PORT, TZ, ENABLE_PROJECTS ]
+  files: []
+notes:
+  - "If ENABLE_PROJECTS=true, you may mount a custom settings.js via host rendering."

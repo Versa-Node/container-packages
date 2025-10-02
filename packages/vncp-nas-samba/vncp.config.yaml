@@ -1,0 +1,40 @@
+version: 1
+metadata:
+  id: vncp-nas-samba
+  name: Samba NAS
+  summary: Simple Samba share
+  website: https://www.samba.org/
+parameters:
+  - key: SAMBA_USER
+    label: Samba user
+    type: string
+    description: Username allowed to access the share
+    default: user
+    required: true
+  - key: SAMBA_PASS
+    label: Samba password
+    type: password
+    description: Password for the Samba user
+    default: pass
+    required: true
+    secret: true
+  - key: SAMBA_SHARE_NAME
+    label: Share name
+    type: string
+    description: Name of the shared folder
+    default: share
+  - key: SHARE_PATH
+    label: Share path (host)
+    type: path
+    description: Host folder to expose as the share
+    default: ./data
+  - key: READ_ONLY
+    label: Read-only
+    type: bool
+    description: Make the share read-only
+    default: false
+mappings:
+  env: [ SAMBA_USER, SAMBA_PASS, SAMBA_SHARE_NAME, READ_ONLY ]
+  files: []
+notes:
+  - "Map SHARE_PATH to ./data in compose."

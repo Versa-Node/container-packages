@@ -1,68 +1,31 @@
-# container-packages
+# container-packages (vncp, cockpit-ready)
 
-Community-driven repository of containerized packages for **VersaNode** (a mini-server built around Raspberry Pi Compute Module 5, `arm64`).  
-Packages are simple, composable building blocks (e.g., MQTT broker/client, NAS, Home Assistant, OpenEMS, Node-RED) that can be mixed into your stack.
+Community-driven containers for **VersaNode** (RPi CM5, `arm64`).  
+All package names are prefixed with `vncp-` (VersaNode Controller Package).
 
-> **Architectures:** Optimized for `linux/arm64` (CM5). Most images also run on `linux/amd64`.  
-> **Orchestration:** Docker Compose by default. Kubernetes manifests can be contributed later.
+**Images on GHCR:** `ghcr.io/<your-org>/vncp-<package>:latest`
+
+**Shared network:** All services join an external Docker network named `versanode` so they can reach each other by service name.
+
+**Runtime config:** Each package defines parameters in `vncp.config.yaml` (with `type`, `description`, defaults, and validation hints).  
+You (or your cockpit tool) render a `.env` and optional files **on the Docker host**, and the compose files load them via `env_file: .env`.
 
 ## Quick start
-
-**Images on GHCR:** `ghcr.io/versanode/<package>:latest`
-
 ```bash
-git clone https://github.com/YOUR-ORG/container-packages.git
+git clone https://github.com/<your-org>/container-packages.git
 cd container-packages
-make bootstrap           # installs pre-commit hooks, basic checks
-make list                # list available packages
-make compose-example     # prints a multi-service compose example
+bash tools/ensure-network.sh         # create shared 'versanode' network
+make list                            # list packages
 ```
 
-To bring up a single package:
-
+To run a package (after you've created a `.env` in that package folder):
 ```bash
-cd packages/mosquitto
-docker compose -f docker-compose.example.yml up -d
+cd packages/vncp-mosquitto
+docker compose up -d
 ```
 
 ## Repo layout
-
-- `packages/` — one folder per package
-- `docs/` — how-tos, spec, and VersaNode notes
-- `tools/` — helper scripts (build, test, new package scaffolding)
-- `.github/workflows` — CI for linting and optional cross-arch builds
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) and the [package spec](docs/package-spec.md).
-Start with the ready-to-copy [template](packages/template).
-
-
-## Docker Hub
-
-All packages are published to Docker Hub under `ghcr.io/versanode/<package>` (arm64/amd64).  
-Set GitHub repo secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` to enable CI pushes.
-
-Example:
-```bash
-docker pull ghcr.io/versanode/mosquitto:latest
-docker run -p 1883:1883 ghcr.io/versanode/mosquitto:latest
-```
-
-
-## GitHub Container Registry (GHCR)
-These container packages are all prefixed with `vncp-` - VersaNode Container Package.
-All packages are published to GHCR under `ghcr.io/versanode/<package>` (arm64/amd64). A full list of the published packages can 
-be found under the our organization here `https://github.com/orgs/Versa-Node/packages`
-
-**Setup CI:** In your GitHub repo → Settings → Secrets and variables → Actions
-- `GHCR_TOKEN` — a GitHub Personal Access Token (classic) with `write:packages` scope (or use PAT fine-grained with Packages: Read/Write).
-
-**Pull examples:**
-```bash
-docker pull ghcr.io/versanode/mosquitto:latest
-docker pull ghcr.io/versanode/nodered:latest
-docker pull ghcr.io/versanode/home-assistant:latest
-docker pull ghcr.io/versanode/openems:latest
-docker pull ghcr.io/versanode/nas-samba:latest
-```
+- `packages/` — one folder per `vncp-*` package
+- `docs/` — cockpit config spec & notes
+- `tools/` — helpers (validate, ensure network)
+- `.github/workflows` — CI for lint+publish (GHCR)

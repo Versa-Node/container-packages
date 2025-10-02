@@ -1,0 +1,22 @@
+version: 1
+metadata:
+  id: vncp-home-assistant
+  name: Home Assistant
+  summary: Open source home automation
+  website: https://www.home-assistant.io/
+parameters:
+  - key: TZ
+    label: Timezone
+    type: string
+    description: Container timezone
+    default: UTC
+  - key: CONFIG_PATH
+    label: Config path (host)
+    type: path
+    description: Host folder to persist Home Assistant config
+    default: ./config
+mappings:
+  env: [ TZ ]
+  files: []
+notes:
+  - "Host networking enables discovery protocols."

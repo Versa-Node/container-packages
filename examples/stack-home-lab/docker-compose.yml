@@ -1,8 +1,8 @@
 services:
-  mosquitto:
-    image: ghcr.io/versanode/mosquitto:latest
-    container_name: mosquitto
+  vncp-mosquitto:
+    image: ghcr.io/<your-org>/vncp-mosquitto:latest
     restart: unless-stopped
+    env_file: ./.env
     ports:
       - "1883:1883"
       - "9001:9001"
@@ -10,36 +10,31 @@ services:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
+    networks: [versanode]
 
-  nodered:
-    image: ghcr.io/versanode/nodered:latest
-    container_name: nodered
+  vncp-nodered:
+    image: ghcr.io/<your-org>/vncp-nodered:latest
     restart: unless-stopped
+    env_file: ./.env
     ports:
       - "1880:1880"
     volumes:
       - ./nodered/data:/data
     depends_on:
-      - mosquitto
+      - vncp-mosquitto
+    networks: [versanode]
 
-  homeassistant:
-    image: ghcr.io/versanode/home-assistant:latest
-    container_name: homeassistant
+  vncp-postgresql:
+    image: ghcr.io/<your-org>/vncp-postgresql:latest
     restart: unless-stopped
-    network_mode: host
-    privileged: true
-    volumes:
-      - ./homeassistant/config:/config
-
-  nas:
-    build: ../../packages/nas-samba
-    container_name: nas-samba
-    restart: unless-stopped
-    environment:
-      - SAMBA_USER=${SAMBA_USER:-user}
-      - SAMBA_PASS=${SAMBA_PASS:-pass}
-      - SAMBA_SHARE_NAME=${SAMBA_SHARE_NAME:-share}
+    env_file: ./.env
     ports:
-      - "445:445"
+      - "5432:5432"
     volumes:
-      - ./nas/data:/shares/${SAMBA_SHARE_NAME:-share}
+      - ./postgresql/data:/var/lib/postgresql/data
+    networks: [versanode]
+
+networks:
+  versanode:
+    external: true
+    name: versanode

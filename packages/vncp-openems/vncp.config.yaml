@@ -1,0 +1,28 @@
+version: 1
+metadata:
+  id: vncp-openems
+  name: OpenEMS Edge
+  summary: Energy Management System (Edge)
+  website: https://openems.io
+parameters:
+  - key: HTTP_PORT
+    label: HTTP Port
+    type: port
+    description: Port for Edge HTTP UI/API
+    default: 8080
+  - key: WS_PORT
+    label: WebSocket Port
+    type: port
+    description: Port for WebSocket API (requires WS controller enabled)
+    default: 8075
+  - key: LOG_LEVEL
+    label: Log level
+    type: enum
+    description: Logging verbosity for the service
+    enum: [ TRACE, DEBUG, INFO, WARN, ERROR ]
+    default: INFO
+mappings:
+  env: [ HTTP_PORT, WS_PORT, LOG_LEVEL ]
+  files: []
+notes:
+  - "Enable Controller.Api.Websocket in Edge if exposing WS_PORT."

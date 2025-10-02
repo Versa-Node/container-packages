@@ -1,0 +1,16 @@
+name: vncp-netbird
+description: NetBird client (WireGuard mesh)
+arch: [linux/arm64, linux/amd64]
+maintainers:
+  - name: Community
+    github: versanode-community
+upstream:
+  image: docker.io/netbirdio/netbird:latest
+ports: []
+volumes: []
+env: []
+healthcheck:
+  test: ["CMD", "bash", "-lc", "echo ok"]
+  interval: 30s
+  timeout: 5s
+  retries: 3

@@ -1,0 +1,27 @@
+services:
+  vncp-netbird:
+    image: ghcr.io/<your-org>/vncp-netbird:latest
+    container_name: vncp-netbird
+    restart: unless-stopped
+    env_file: ./.env
+
+    cap_add: [NET_ADMIN]
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - NB_SETUP_KEY=${NB_SETUP_KEY}
+      - NB_MANAGEMENT_URL=${NB_MANAGEMENT_URL:-https://api.netbird.io}
+      - NB_LOG_LEVEL=${NB_LOG_LEVEL:-info}
+    command: ["service", "start", "--management-url", "${NB_MANAGEMENT_URL:-https://api.netbird.io}", "--setup-key", "${NB_SETUP_KEY}"]
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "pgrep netbird || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+    networks: [versanode]
+
+networks:
+  versanode:
+    external: true
+    name: versanode

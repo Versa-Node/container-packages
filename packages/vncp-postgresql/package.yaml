@@ -1,0 +1,16 @@
+name: vncp-postgresql
+description: PostgreSQL 16 database
+arch: [linux/arm64, linux/amd64]
+maintainers:
+  - name: Community
+    github: versanode-community
+upstream:
+  image: docker.io/postgres:16-alpine
+ports: []
+volumes: []
+env: []
+healthcheck:
+  test: ["CMD", "bash", "-lc", "echo ok"]
+  interval: 30s
+  timeout: 5s
+  retries: 3
