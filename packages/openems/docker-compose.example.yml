@@ -1,6 +1,6 @@
 services:
   openems:
-    image: openems/edge:latest
+    image: ghcr.io/versanode/openems:latest
     restart: unless-stopped
     ports:
       - "8075:8075"
