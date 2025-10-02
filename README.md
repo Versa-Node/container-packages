@@ -1,31 +1,66 @@
 # VersaNode Container Packages (VNCP)
 
-Community-driven containers for **VersaNode** (RPi CM5, `arm64`).  
-All package names are prefixed with `vncp-` (VersaNode Controller Package).
+Containers for **VersaNode** (RPi CM5, `arm64` first-class; `amd64` supported).  
+Every package is prefixed **`vncp-`** (*VersaNode Controller Package*).
 
-**Images on GHCR:** `ghcr.io/versanode/vncp-<package>:latest`
+**Registry (GHCR):** `ghcr.io/versanode/vncp-<package>:latest`  
+**Shared network:** All services join the external Docker network **`versanode`** so they can reach each other by service name.  
+**Runtime config:** Each package ships a **`vncp.config.yaml`** describing user-settable parameters (type, description, defaults, validation hints).  
+You (or your cockpit tool) render a `.env` (and any config files) **on the Docker host**. Each `docker-compose.yml` loads `env_file: .env`.
 
-**Shared network:** All services join an external Docker network named `versanode` so they can reach each other by service name.
+> ℹ️ GHCR namespaces are **lowercase**. If your org is `Versa-Node`, images live under `ghcr.io/versa-node/...`.
 
-**Runtime config:** Each package defines parameters in `vncp.config.yaml` (with `type`, `description`, defaults, and validation hints).  
-You (or your cockpit tool) render a `.env` and optional files **on the Docker host**, and the compose files load them via `env_file: .env`.
+All published container packages live here:  
+https://github.com/orgs/Versa-Node/packages
+
+---
 
 ## Quick start
+
 ```bash
-git clone https://github.com/<your-org>/container-packages.git
+git clone https://github.com/versanode/container-packages.git
 cd container-packages
-bash tools/ensure-network.sh         # create shared 'versanode' network
-make list                            # list packages
+
+# One-time: create the shared network used by all services
+bash tools/ensure-network.sh
+
+# See available packages
+make list
 ```
 
-To run a package (after you've created a `.env` in that package folder):
+Run a package (after creating a `.env` in that package folder):
+
 ```bash
 cd packages/vncp-mosquitto
+# .env example:
+# MQTT_PORT=1883
+# WS_ENABLE=true
+# WS_PORT=9001
+# ALLOW_ANONYMOUS=false
+# MQTT_USER=habibi
+# MQTT_PASSWORD=supersecret
 docker compose up -d
 ```
 
+---
+
+## Images & tags
+
+- `:latest` (main branch)
+- `:<short-sha>` (traceability)
+- `:versanode-controller-package` (static tag)
+
+Example pulls:
+```bash
+docker pull ghcr.io/versanode/vncp-mosquitto:latest
+docker pull ghcr.io/versanode/vncp-mosquitto:versanode-controller-package
+```
+
+---
+
 ## Repo layout
-- `packages/` — one folder per `vncp-*` package
-- `docs/` — cockpit config spec & notes
-- `tools/` — helpers (validate, ensure network)
-- `.github/workflows` — CI for lint+publish (GHCR)
+
+- `packages/` — one folder per `vncp-*` package (each has `vncp.config.yaml` and `docker-compose.yml`)
+- `docs/` — VNCP config spec & notes
+- `tools/` — helpers (`validate.py`, `ensure-network.sh`)
+- `.github/workflows/` — CI for validation & GHCR publishing
