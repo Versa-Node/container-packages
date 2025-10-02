@@ -52,7 +52,8 @@ docker run -p 1883:1883 ghcr.io/versanode/mosquitto:latest
 
 ## GitHub Container Registry (GHCR)
 
-All packages are published to GHCR under `ghcr.io/versanode/<package>` (arm64/amd64).
+All packages are published to GHCR under `ghcr.io/versanode/<package>` (arm64/amd64). A full list of available packages can 
+be found under the our organization here `https://github.com/orgs/Versa-Node/packages`
 
 **Setup CI:** In your GitHub repo → Settings → Secrets and variables → Actions
 - `GHCR_TOKEN` — a GitHub Personal Access Token (classic) with `write:packages` scope (or use PAT fine-grained with Packages: Read/Write).
