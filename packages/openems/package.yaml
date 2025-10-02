@@ -5,7 +5,7 @@ maintainers:
   - name: Community
     github: versanode-community
 upstream:
-  image: openems/openems:latest
+  image: openems/edge:latest
 ports:
   - "8075:8075"
 volumes:
