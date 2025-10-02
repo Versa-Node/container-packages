@@ -93,6 +93,14 @@ Each entry in `parameters:` can include:
 
 ---
 
+- **Embeds `vncp.config.yaml` inside each image** at `/usr/share/versanode/vncp.config.yaml`
+- Adds labels:
+  - `io.versanode.vncp.config.path`
+  - `io.versanode.vncp.config.inline` (gz+base64 of the YAML)
+  - `io.versanode.vncp.config.sha256`
+  - `io.versanode.vncp.config.url`
+  - `org.opencontainers.image.documentation`
+
 ## 5) Where to Find Published Packages
 
 All published container packages are visible under the org’s packages:  
