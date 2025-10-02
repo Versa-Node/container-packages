@@ -3,8 +3,7 @@ name: Publish packages to GHCR
 on:
   push:
     branches: [ main ]
-    tags:
-      - 'v*.*.*'
+    tags: [ 'v*.*.*' ]
   workflow_dispatch:
 
 jobs:
@@ -13,6 +12,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      ORG: ${{ github.repository_owner }}   # <— set once here
     steps:
       - uses: actions/checkout@v4
 
@@ -28,26 +29,31 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Compute tag
         id: vars
         run: |
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=latest" >> $GITHUB_OUTPUT
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build & push each package
         run: |
           set -euo pipefail
           TAG="${{ steps.vars.outputs.tag }}"
-          ORG: ${{ github.repository_owner }}
           for pkg in packages/*; do
             [ -d "$pkg" ] || continue
             name="$(basename "$pkg")"
             if [ -f "$pkg/Dockerfile" ]; then
               echo "::group::Building $name"
-              docker buildx build                 --platform linux/amd64,linux/arm64                 -t ghcr.io/$ORG/$name:${TAG}                -t ghcr.io/$ORG/$name:${GITHUB_SHA::7}                 "$pkg"                 --push
+              docker buildx build \
+                --platform linux/amd64,linux/arm64 \
+                -t ghcr.io/${ORG}/${name}:${TAG} \
+                -t ghcr.io/${ORG}/${name}:${GITHUB_SHA::7} \
+                "$pkg" \
+                --push
               echo "::endgroup::"
             fi
           done
