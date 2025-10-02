@@ -13,7 +13,7 @@ jobs:
       contents: read
       packages: write
     env:
-      ORG: ${{ github.repository_owner }}   # <— set once here
+      ORG: ${{ toLower(github.repository_owner) }}   # 👈 force lowercase here
     steps:
       - uses: actions/checkout@v4
 
@@ -43,6 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.vars.outputs.tag }}"
+          echo "Pushing to ghcr.io/${ORG}"
           for pkg in packages/*; do
             [ -d "$pkg" ] || continue
             name="$(basename "$pkg")"
@@ -52,8 +53,7 @@ jobs:
                 --platform linux/amd64,linux/arm64 \
                 -t ghcr.io/${ORG}/${name}:${TAG} \
                 -t ghcr.io/${ORG}/${name}:${GITHUB_SHA::7} \
-                "$pkg" \
-                --push
+                "$pkg" --push
               echo "::endgroup::"
             fi
           done
