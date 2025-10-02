@@ -41,13 +41,13 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.vars.outputs.tag }}"
-          ORG="versanode"
+          ORG: ${{ github.repository_owner }}
           for pkg in packages/*; do
             [ -d "$pkg" ] || continue
             name="$(basename "$pkg")"
             if [ -f "$pkg/Dockerfile" ]; then
               echo "::group::Building $name"
-              docker buildx build                 --platform linux/amd64,linux/arm64                 -t ghcr.io/$ORG/$name:$TAG                 -t ghcr.io/$ORG/$name:${GITHUB_SHA::7}                 "$pkg"                 --push
+              docker buildx build                 --platform linux/amd64,linux/arm64                 -t ghcr.io/${ORG}/${name}:${TAG}                -t ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}                 "$pkg"                 --push
               echo "::endgroup::"
             fi
           done
