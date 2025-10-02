@@ -13,7 +13,7 @@ jobs:
       contents: read
       packages: write
     env:
-      ORG: ${{ toLower(github.repository_owner) }}   # 👈 force lowercase here
+      OWNER: ${{ github.repository_owner }}   # raw owner (may have caps)
     steps:
       - uses: actions/checkout@v4
 
@@ -38,6 +38,11 @@ jobs:
           else
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Lowercase owner for image tags
+        run: |
+          echo "ORG=${OWNER,,}" >> "$GITHUB_ENV"
+          echo "Using org: ${OWNER} -> ${ORG}"
 
       - name: Build & push each package
         run: |
