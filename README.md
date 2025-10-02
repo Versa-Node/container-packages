@@ -1,4 +1,4 @@
-# container-packages (vncp, cockpit-ready)
+# VersaNode Container Packages (VNCP)
 
 Community-driven containers for **VersaNode** (RPi CM5, `arm64`).  
 All package names are prefixed with `vncp-` (VersaNode Controller Package).
