@@ -3,3 +3,4 @@ LABEL org.opencontainers.image.title="vncp-home-assistant"           org.opencon
 
 LABEL org.opencontainers.image.keywords="versanode-controller-package,versanode,controller,package"           io.versanode.kind="controller-package"
 
+LABEL org.opencontainers.image.documentation="https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-home-assistant#readme"

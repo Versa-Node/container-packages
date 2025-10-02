@@ -8,3 +8,4 @@ VOLUME ["/shares"]
 HEALTHCHECK --interval=30s --timeout=5s --retries=5 CMD nc -z localhost 445 || exit 1
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["smbd","--foreground","--no-process-group","--log-stdout"]
+LABEL org.opencontainers.image.documentation="https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-nas-samba#readme"
