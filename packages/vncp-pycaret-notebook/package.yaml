@@ -1,0 +1,19 @@
+name: vncp-pycaret-notebook
+description: JupyterLab + PyCaret notebook environment
+arch: [linux/arm64, linux/amd64]
+maintainers:
+  - name: Community
+    github: versanode-community
+upstream:
+  image: jupyter/scipy-notebook:latest
+ports:
+  - "8888:8888"
+volumes:
+  - "./work:/home/jovyan/work"
+env:
+  - "JUPYTER_TOKEN=changeme"
+healthcheck:
+  test: ["CMD", "bash", "-lc", "nc -z localhost 8888"]
+  interval: 30s
+  timeout: 5s
+  retries: 5

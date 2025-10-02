@@ -1,0 +1,34 @@
+version: 1
+metadata:
+  id: vncp-pycaret-notebook
+  name: PyCaret Notebook
+  summary: JupyterLab with PyCaret preinstalled
+  website: https://pycaret.org/
+parameters:
+  - key: JUPYTER_PORT
+    label: Jupyter port
+    type: port
+    description: Host port for JupyterLab
+    default: 8888
+  - key: JUPYTER_TOKEN
+    label: Jupyter token
+    type: password
+    description: Authentication token to access the notebook
+    default: changeme
+    required: true
+    secret: true
+  - key: TZ
+    label: Timezone
+    type: string
+    description: Container timezone
+    default: UTC
+  - key: EXTRA_PIP_PACKAGES
+    label: Extra pip packages
+    type: string
+    description: Space-separated pip packages to install on start (optional)
+    default: ""
+mappings:
+  env: [ JUPYTER_PORT, JUPYTER_TOKEN, TZ, EXTRA_PIP_PACKAGES ]
+  files: []
+notes:
+  - "Connect to TimescaleDB at host 'vncp-timescaledb' on the shared 'versanode' network."

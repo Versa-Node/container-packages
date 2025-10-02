@@ -1,0 +1,28 @@
+services:
+  vncp-pycaret-notebook:
+    image: ghcr.io/versa-node/vncp-pycaret-notebook:latest
+    container_name: vncp-pycaret-notebook
+    restart: unless-stopped
+    env_file: ./.env
+    ports:
+      - "${JUPYTER_PORT:-8888}:8888"
+    environment:
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN:-changeme}
+      - TZ=${TZ:-UTC}
+      - EXTRA_PIP_PACKAGES=${EXTRA_PIP_PACKAGES:-}
+    volumes:
+      - ./work:/home/jovyan/work
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "nc -z localhost 8888"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks: [versanode]
+    depends_on:
+      - vncp-timescaledb
+      - vncp-postgresql
+
+networks:
+  versanode:
+    external: true
+    name: versanode
