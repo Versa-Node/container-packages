@@ -1,2 +1,5 @@
 FROM docker.io/koenkk/zigbee2mqtt:latest
-LABEL org.opencontainers.image.title="vncp-zigbee2mqtt"           org.opencontainers.image.source="https://github.com/Versa-Node/container-packages"           org.opencontainers.image.keywords="versanode-controller-package,versanode,controller,package"           io.versanode.kind="controller-package"           org.opencontainers.image.documentation="https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-zigbee2mqtt#readme"
+COPY vncp.config.yaml /usr/share/versanode/vncp.config.yaml
+LABEL io.versanode.vncp.config.path="/usr/share/versanode/vncp.config.yaml"
+LABEL org.opencontainers.image.documentation="https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-zigbee2mqtt#readme"
+LABEL org.opencontainers.image.licenses="Apache-2.0"

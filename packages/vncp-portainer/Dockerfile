@@ -1,5 +1,5 @@
-FROM docker.io/grafana/grafana-oss:latest
+FROM docker.io/portainer/portainer-ce:latest
 COPY vncp.config.yaml /usr/share/versanode/vncp.config.yaml
 LABEL io.versanode.vncp.config.path="/usr/share/versanode/vncp.config.yaml"
-LABEL org.opencontainers.image.documentation="https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-grafana#readme"
+LABEL org.opencontainers.image.documentation="https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-portainer#readme"
 LABEL org.opencontainers.image.licenses="Apache-2.0"

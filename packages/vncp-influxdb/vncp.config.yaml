@@ -1,48 +1,40 @@
-version: 1
-metadata:
-  id: vncp-influxdb
-  name: InfluxDB 2.x
-  summary: Time-series database for metrics & IoT
-  website: https://www.influxdata.com/
-parameters:
-  - key: INFLUXDB_PORT
-    label: HTTP API port
-    type: port
-    description: Host port for InfluxDB
-    default: 8086
-  - key: INFLUXDB_INIT_MODE
-    label: Init mode
-    type: enum
-    description: Setup mode on first run
-    enum: [ setup, none ]
-    default: setup
-  - key: INFLUXDB_USERNAME
-    label: Admin username
-    type: string
-    description: Initial admin username
-    default: admin
-  - key: INFLUXDB_PASSWORD
-    label: Admin password
-    type: password
-    description: Initial admin password
-    default: changeme
-    secret: true
-  - key: INFLUXDB_ORG
-    label: Organization
-    type: string
-    description: Organization name
-    default: versanode
-  - key: INFLUXDB_BUCKET
-    label: Default bucket
-    type: string
-    description: Default bucket name
-    default: default
-  - key: INFLUXDB_TOKEN
-    label: Admin token
-    type: password
-    description: Optional static admin token
-    default: ""
-    secret: true
-mappings:
-  env: [ INFLUXDB_PORT, INFLUXDB_INIT_MODE, INFLUXDB_USERNAME, INFLUXDB_PASSWORD, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_TOKEN ]
-  files: []
+  version: 1
+  metadata:
+    id: vncp-influxdb
+    name: Influxdb
+    summary: Auto-generated package config
+    website: https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-influxdb
+  parameters:
+- key: INFLUXDB_PORT
+  label: Influxdb Port
+  type: string
+  description: Auto-generated parameter for vncp-influxdb
+  default: ""
+- key: INFLUXDB_USERNAME
+  label: Influxdb Username
+  type: string
+  description: Auto-generated parameter for vncp-influxdb
+  default: ""
+- key: INFLUXDB_PASSWORD
+  label: Influxdb Password
+  type: string
+  description: Auto-generated parameter for vncp-influxdb
+  default: ""
+- key: INFLUXDB_ORG
+  label: Influxdb Org
+  type: string
+  description: Auto-generated parameter for vncp-influxdb
+  default: ""
+- key: INFLUXDB_BUCKET
+  label: Influxdb Bucket
+  type: string
+  description: Auto-generated parameter for vncp-influxdb
+  default: ""
+- key: INFLUXDB_TOKEN
+  label: Influxdb Token
+  type: string
+  description: Auto-generated parameter for vncp-influxdb
+  default: ""
+  mappings:
+    env: [INFLUXDB_PORT, INFLUXDB_USERNAME, INFLUXDB_PASSWORD, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_TOKEN]
+    files: []

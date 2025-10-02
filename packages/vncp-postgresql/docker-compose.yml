@@ -1,24 +1,11 @@
 services:
   vncp-postgresql:
-    image: ghcr.io/<your-org>/vncp-postgresql:latest
+    image: ghcr.io/versa-node/vncp-postgresql:latest
     container_name: vncp-postgresql
     restart: unless-stopped
     env_file: ./.env
-
-    ports:
-      - "${PG_PORT:-5432}:5432"
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${POSTGRES_DB:-app}
-    volumes:
-      - ./data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-postgres}"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-
+        ports:
+  - "${PG_PORT:-5432}:5432"
     networks: [versanode]
 
 networks:

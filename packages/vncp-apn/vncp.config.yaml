@@ -1,39 +1,35 @@
-version: 1
-metadata:
-  id: vncp-apn
-  name: Cellular APN (PPP)
-  summary: Dial a cellular APN via PPP
-  website: https://ppp.samba.org/
-parameters:
-  - key: APN_NAME
-    label: APN Name
-    type: string
-    description: APN name provided by your carrier
-    default: internet
-    required: true
-  - key: APN_USER
-    label: APN Username
-    type: string
-    description: Username for APN (if required by carrier)
-    default: ""
-  - key: APN_PASSWORD
-    label: APN Password
-    type: password
-    description: Password for APN (if required)
-    default: ""
-    secret: true
-  - key: DIAL_NUMBER
-    label: Dial number
-    type: string
-    description: PPP dial number
-    default: "*99#"
-  - key: MODEM_DEV
-    label: Modem device
-    type: string
-    description: Modem TTY device on the host
-    default: "/dev/ttyUSB0"
-mappings:
-  env: [ APN_NAME, APN_USER, APN_PASSWORD, DIAL_NUMBER, MODEM_DEV ]
-  files: []
-notes:
-  - "Requires privileged container and device mapping from host."
+  version: 1
+  metadata:
+    id: vncp-apn
+    name: Apn
+    summary: Auto-generated package config
+    website: https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-apn
+  parameters:
+- key: APN_NAME
+  label: Apn Name
+  type: string
+  description: Auto-generated parameter for vncp-apn
+  default: ""
+- key: APN_USER
+  label: Apn User
+  type: string
+  description: Auto-generated parameter for vncp-apn
+  default: ""
+- key: APN_PASSWORD
+  label: Apn Password
+  type: string
+  description: Auto-generated parameter for vncp-apn
+  default: ""
+- key: DIAL_NUMBER
+  label: Dial Number
+  type: string
+  description: Auto-generated parameter for vncp-apn
+  default: ""
+- key: MODEM_DEV
+  label: Modem Dev
+  type: string
+  description: Auto-generated parameter for vncp-apn
+  default: ""
+  mappings:
+    env: [APN_NAME, APN_USER, APN_PASSWORD, DIAL_NUMBER, MODEM_DEV]
+    files: []

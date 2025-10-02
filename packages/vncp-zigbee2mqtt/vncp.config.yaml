@@ -1,43 +1,40 @@
-version: 1
-metadata:
-  id: vncp-zigbee2mqtt
-  name: Zigbee2MQTT
-  summary: Zigbee to MQTT bridge with web UI
-  website: https://www.zigbee2mqtt.io/
-parameters:
-  - key: MQTT_SERVER
-    label: MQTT server URL
-    type: string
-    description: e.g. mqtt://vncp-mosquitto:1883
-    default: mqtt://vncp-mosquitto:1883
-  - key: MQTT_USER
-    label: MQTT username
-    type: string
-    description: Username for MQTT broker (optional)
-    default: ""
-  - key: MQTT_PASSWORD
-    label: MQTT password
-    type: password
-    description: Password for MQTT broker (optional)
-    default: ""
-    secret: true
-  - key: ZIGBEE_SERIAL
-    label: Zigbee coordinator serial device
-    type: string
-    description: Host serial device path for the coordinator
-    default: /dev/ttyUSB0
-  - key: Z2M_UI_PORT
-    label: Web UI port
-    type: port
-    description: Host port for Zigbee2MQTT frontend
-    default: 8080
-  - key: TZ
-    label: Timezone
-    type: string
-    description: Container timezone
-    default: UTC
-mappings:
-  env: [ MQTT_SERVER, MQTT_USER, MQTT_PASSWORD, ZIGBEE_SERIAL, Z2M_UI_PORT, TZ ]
-  files: []
-notes:
-  - "Ensure your user is allowed to access the serial device (e.g., dialout group)."
+  version: 1
+  metadata:
+    id: vncp-zigbee2mqtt
+    name: Zigbee2Mqtt
+    summary: Auto-generated package config
+    website: https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-zigbee2mqtt
+  parameters:
+- key: MQTT_SERVER
+  label: Mqtt Server
+  type: string
+  description: Auto-generated parameter for vncp-zigbee2mqtt
+  default: ""
+- key: MQTT_USER
+  label: Mqtt User
+  type: string
+  description: Auto-generated parameter for vncp-zigbee2mqtt
+  default: ""
+- key: MQTT_PASSWORD
+  label: Mqtt Password
+  type: string
+  description: Auto-generated parameter for vncp-zigbee2mqtt
+  default: ""
+- key: ZIGBEE_SERIAL
+  label: Zigbee Serial
+  type: string
+  description: Auto-generated parameter for vncp-zigbee2mqtt
+  default: ""
+- key: Z2M_UI_PORT
+  label: Z2M Ui Port
+  type: string
+  description: Auto-generated parameter for vncp-zigbee2mqtt
+  default: ""
+- key: TZ
+  label: Tz
+  type: string
+  description: Auto-generated parameter for vncp-zigbee2mqtt
+  default: ""
+  mappings:
+    env: [MQTT_SERVER, MQTT_USER, MQTT_PASSWORD, ZIGBEE_SERIAL, Z2M_UI_PORT, TZ]
+    files: []

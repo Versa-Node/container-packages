@@ -1,29 +1,25 @@
-version: 1
-metadata:
-  id: vncp-netbird
-  name: NetBird Client
-  summary: Join a NetBird mesh network via setup key
-  website: https://netbird.io
-parameters:
-  - key: NB_SETUP_KEY
-    label: Setup Key
-    type: password
-    description: NetBird setup key to enroll this node
-    required: true
-    secret: true
-  - key: NB_MANAGEMENT_URL
-    label: Management URL
-    type: string
-    description: NetBird management API URL
-    default: https://api.netbird.io
-  - key: NB_LOG_LEVEL
-    label: Log level
-    type: enum
-    description: Log verbosity
-    enum: [ trace, debug, info, warn, error ]
-    default: info
-mappings:
-  env: [ NB_SETUP_KEY, NB_MANAGEMENT_URL, NB_LOG_LEVEL ]
-  files: []
-notes:
-  - "Requires /dev/net/tun and NET_ADMIN capability."
+  version: 1
+  metadata:
+    id: vncp-netbird
+    name: Netbird
+    summary: Auto-generated package config
+    website: https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-netbird
+  parameters:
+- key: NB_SETUP_KEY
+  label: Nb Setup Key
+  type: string
+  description: Auto-generated parameter for vncp-netbird
+  default: ""
+- key: NB_MANAGEMENT_URL
+  label: Nb Management Url
+  type: string
+  description: Auto-generated parameter for vncp-netbird
+  default: ""
+- key: NB_LOG_LEVEL
+  label: Nb Log Level
+  type: string
+  description: Auto-generated parameter for vncp-netbird
+  default: ""
+  mappings:
+    env: [NB_SETUP_KEY, NB_MANAGEMENT_URL, NB_LOG_LEVEL]
+    files: []

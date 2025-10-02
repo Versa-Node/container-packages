@@ -1,26 +1,25 @@
-version: 1
-metadata:
-  id: vncp-grafana
-  name: Grafana
-  summary: Grafana dashboards for time-series data
-  website: https://grafana.com/
-parameters:
-  - key: GRAFANA_PORT
-    label: Grafana port
-    type: port
-    description: Host port for Grafana UI
-    default: 3000
-  - key: GRAFANA_ADMIN_USER
-    label: Admin username
-    type: string
-    description: Grafana admin username
-    default: admin
-  - key: GRAFANA_ADMIN_PASSWORD
-    label: Admin password
-    type: password
-    description: Grafana admin password
-    default: admin
-    secret: true
-mappings:
-  env: [ GRAFANA_PORT, GRAFANA_ADMIN_USER, GRAFANA_ADMIN_PASSWORD ]
-  files: []
+  version: 1
+  metadata:
+    id: vncp-grafana
+    name: Grafana
+    summary: Auto-generated package config
+    website: https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-grafana
+  parameters:
+- key: GRAFANA_PORT
+  label: Grafana Port
+  type: string
+  description: Auto-generated parameter for vncp-grafana
+  default: ""
+- key: GRAFANA_ADMIN_USER
+  label: Grafana Admin User
+  type: string
+  description: Auto-generated parameter for vncp-grafana
+  default: ""
+- key: GRAFANA_ADMIN_PASSWORD
+  label: Grafana Admin Password
+  type: string
+  description: Auto-generated parameter for vncp-grafana
+  default: ""
+  mappings:
+    env: [GRAFANA_PORT, GRAFANA_ADMIN_USER, GRAFANA_ADMIN_PASSWORD]
+    files: []

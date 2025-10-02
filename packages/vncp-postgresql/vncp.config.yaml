@@ -1,40 +1,30 @@
-version: 1
-metadata:
-  id: vncp-postgresql
-  name: PostgreSQL
-  summary: PostgreSQL 16 database
-  website: https://www.postgresql.org/
-parameters:
-  - key: PG_PORT
-    label: Host Port
-    type: port
-    description: Port exposed on the host for PostgreSQL
-    default: 5432
-  - key: POSTGRES_USER
-    label: Username
-    type: string
-    description: Database superuser name
-    default: postgres
-    required: true
-  - key: POSTGRES_PASSWORD
-    label: Password
-    type: password
-    description: Database superuser password
-    default: postgres
-    required: true
-    secret: true
-  - key: POSTGRES_DB
-    label: Database
-    type: string
-    description: Default database to create
-    default: app
-  - key: DATA_PATH
-    label: Data path (host)
-    type: path
-    description: Host folder for PostgreSQL data
-    default: ./data
-mappings:
-  env: [ PG_PORT, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB ]
-  files: []
-notes:
-  - "Map DATA_PATH to ./data in compose."
+  version: 1
+  metadata:
+    id: vncp-postgresql
+    name: Postgresql
+    summary: Auto-generated package config
+    website: https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-postgresql
+  parameters:
+- key: PG_PORT
+  label: Pg Port
+  type: string
+  description: Auto-generated parameter for vncp-postgresql
+  default: ""
+- key: POSTGRES_USER
+  label: Postgres User
+  type: string
+  description: Auto-generated parameter for vncp-postgresql
+  default: ""
+- key: POSTGRES_PASSWORD
+  label: Postgres Password
+  type: string
+  description: Auto-generated parameter for vncp-postgresql
+  default: ""
+- key: POSTGRES_DB
+  label: Postgres Db
+  type: string
+  description: Auto-generated parameter for vncp-postgresql
+  default: ""
+  mappings:
+    env: [PG_PORT, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB]
+    files: []

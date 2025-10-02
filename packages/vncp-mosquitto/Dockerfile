@@ -1,6 +1,5 @@
 FROM docker.io/eclipse-mosquitto:2
-LABEL org.opencontainers.image.title="vncp-mosquitto"           org.opencontainers.image.source="https://github.com/YOUR-ORG/container-packages"
-
-LABEL org.opencontainers.image.keywords="versanode-controller-package,versanode,controller,package"           io.versanode.kind="controller-package"
-
+COPY vncp.config.yaml /usr/share/versanode/vncp.config.yaml
+LABEL io.versanode.vncp.config.path="/usr/share/versanode/vncp.config.yaml"
 LABEL org.opencontainers.image.documentation="https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-mosquitto#readme"
+LABEL org.opencontainers.image.licenses="Apache-2.0"

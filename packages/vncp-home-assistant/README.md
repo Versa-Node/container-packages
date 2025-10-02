@@ -1,26 +1,15 @@
 # vncp-home-assistant
 
-**Home Assistant** packaged for VersaNode.
+Upstream: `ghcr.io/home-assistant/home-assistant:stable`
 
 - **Image:** `ghcr.io/versa-node/vncp-home-assistant:latest`
-- **Network mode:** `host`
-- **Volume:** `./config`
-- **Network:** still attaches to `versanode` for name resolution (not used with host mode)
+- **Network:** `versanode`
+- **Compose:** uses `env_file: .env`
 
-## Configure
-
-`vncp.config.yaml` → render `.env` on the host.
-
-**Keys**
-- `TZ` *(string, default UTC)* — container timezone
-- `CONFIG_PATH` *(path, default `./config`)* — host path for config
-
-Ensure `./config` is on a fast, reliable disk (SSD recommended).
-
-## Run
+### Run
 ```bash
 bash ../../tools/ensure-network.sh
 docker compose up -d
 ```
 
-> Discovery protocols require host networking (already enabled).
+

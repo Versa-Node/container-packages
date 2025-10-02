@@ -1,25 +1,25 @@
-version: 1
-metadata:
-  id: vncp-nginx-proxy-manager
-  name: Nginx Proxy Manager
-  summary: Simple reverse proxy with SSL certificates
-  website: https://nginxproxymanager.com/
-parameters:
-  - key: NPM_HTTP_PORT
-    label: HTTP port
-    type: port
-    description: Public HTTP port
-    default: 80
-  - key: NPM_HTTPS_PORT
-    label: HTTPS port
-    type: port
-    description: Public HTTPS port
-    default: 443
-  - key: NPM_ADMIN_PORT
-    label: Admin UI port
-    type: port
-    description: Port for the admin dashboard
-    default: 81
-mappings:
-  env: [ NPM_HTTP_PORT, NPM_HTTPS_PORT, NPM_ADMIN_PORT ]
-  files: []
+  version: 1
+  metadata:
+    id: vncp-nginx-proxy-manager
+    name: Nginx Proxy Manager
+    summary: Auto-generated package config
+    website: https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-nginx-proxy-manager
+  parameters:
+- key: NPM_HTTP_PORT
+  label: Npm Http Port
+  type: string
+  description: Auto-generated parameter for vncp-nginx-proxy-manager
+  default: ""
+- key: NPM_HTTPS_PORT
+  label: Npm Https Port
+  type: string
+  description: Auto-generated parameter for vncp-nginx-proxy-manager
+  default: ""
+- key: NPM_ADMIN_PORT
+  label: Npm Admin Port
+  type: string
+  description: Auto-generated parameter for vncp-nginx-proxy-manager
+  default: ""
+  mappings:
+    env: [NPM_HTTP_PORT, NPM_HTTPS_PORT, NPM_ADMIN_PORT]
+    files: []

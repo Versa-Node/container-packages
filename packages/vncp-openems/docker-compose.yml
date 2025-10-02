@@ -1,21 +1,12 @@
 services:
   vncp-openems:
-    image: ghcr.io/<your-org>/vncp-openems:latest
+    image: ghcr.io/versa-node/vncp-openems:latest
     container_name: vncp-openems
     restart: unless-stopped
     env_file: ./.env
-
-    ports:
-      - "${HTTP_PORT:-8080}:8080"
-      - "${WS_PORT:-8075}:8075"
-    volumes:
-      - ./data:/var/openems
-    healthcheck:
-      test: ["CMD", "bash", "-lc", "nc -z localhost 8080"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-
+        ports:
+  - "${HTTP_PORT:-8080}:8080"
+  - "${WS_PORT:-8075}:8075"
     networks: [versanode]
 
 networks:

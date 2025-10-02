@@ -4,25 +4,8 @@ services:
     container_name: vncp-zigbee2mqtt
     restart: unless-stopped
     env_file: ./.env
-
-    ports:
-      - "${Z2M_UI_PORT:-8080}:8080"
-    volumes:
-      - ./data:/app/data
-    devices:
-      - "${ZIGBEE_SERIAL:-/dev/ttyUSB0}:${ZIGBEE_SERIAL:-/dev/ttyUSB0}"
-    environment:
-      - TZ=${TZ:-UTC}
-      - ZIGBEE2MQTT_CONFIG_MQTT_SERVER=${MQTT_SERVER:-mqtt://vncp-mosquitto:1883}
-      - ZIGBEE2MQTT_CONFIG_MQTT_USER=${MQTT_USER:-}
-      - ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD=${MQTT_PASSWORD:-}
-      - ZIGBEE2MQTT_CONFIG_SERIAL_PORT=${ZIGBEE_SERIAL:-/dev/ttyUSB0}
-      - ZIGBEE2MQTT_CONFIG_FRONTEND_PORT=${Z2M_UI_PORT:-8080}
-    healthcheck:
-      test: ["CMD", "bash", "-lc", "nc -z localhost 8080"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
+        ports:
+  - "${Z2M_UI_PORT:-8080}:8080"
     networks: [versanode]
 
 networks:

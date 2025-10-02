@@ -1,20 +1,11 @@
 services:
   vncp-nas-samba:
-    image: ghcr.io/<your-org>/vncp-nas-samba:latest
+    image: ghcr.io/versa-node/vncp-nas-samba:latest
     container_name: vncp-nas-samba
     restart: unless-stopped
     env_file: ./.env
-
-    ports:
-      - "445:445"
-    volumes:
-      - ./data:/shares/${SAMBA_SHARE_NAME:-share}
-    healthcheck:
-      test: ["CMD", "bash", "-lc", "nc -z localhost 445"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-
+        ports:
+  - "${SAMBA_PORT:-445}:445"
     networks: [versanode]
 
 networks:

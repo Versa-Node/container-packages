@@ -1,11 +1,5 @@
-FROM alpine:3.20
-RUN apk add --no-cache samba-server samba-common-tools bash shadow   && addgroup -S sambagrp && adduser -S -G sambagrp -H -s /sbin/nologin samba
-RUN mkdir -p /shares && chown -R samba:sambagrp /shares
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-EXPOSE 445
-VOLUME ["/shares"]
-HEALTHCHECK --interval=30s --timeout=5s --retries=5 CMD nc -z localhost 445 || exit 1
-ENTRYPOINT ["/entrypoint.sh"]
-CMD ["smbd","--foreground","--no-process-group","--log-stdout"]
+FROM docker.io/dastrasmue/docker-samba:latest
+COPY vncp.config.yaml /usr/share/versanode/vncp.config.yaml
+LABEL io.versanode.vncp.config.path="/usr/share/versanode/vncp.config.yaml"
 LABEL org.opencontainers.image.documentation="https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-nas-samba#readme"
+LABEL org.opencontainers.image.licenses="Apache-2.0"

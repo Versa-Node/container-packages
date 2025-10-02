@@ -1,0 +1,15 @@
+services:
+  vncp-portainer:
+    image: ghcr.io/versa-node/vncp-portainer:latest
+    container_name: vncp-portainer
+    restart: unless-stopped
+    env_file: ./.env
+        ports:
+  - "${PORTAINER_PORT:-9443}:9443"
+  - "${PORTAINER_EDGE_PORT:-8000}:8000"
+    networks: [versanode]
+
+networks:
+  versanode:
+    external: true
+    name: versanode

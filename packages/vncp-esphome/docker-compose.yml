@@ -4,19 +4,8 @@ services:
     container_name: vncp-esphome
     restart: unless-stopped
     env_file: ./.env
-
-    ports:
-      - "${ESPHOME_PORT:-6052}:6052"
-    volumes:
-      - ./config:/config
-    environment:
-      - USERNAME=${ESPHOME_USER:-}
-      - PASSWORD=${ESPHOME_PASSWORD:-}
-    healthcheck:
-      test: ["CMD", "bash", "-lc", "nc -z localhost 6052"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
+        ports:
+  - "${ESPHOME_PORT:-6052}:6052"
     networks: [versanode]
 
 networks:

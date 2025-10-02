@@ -1,52 +1,25 @@
-version: 1
-metadata:
-  id: vncp-mosquitto
-  name: Mosquitto (MQTT)
-  summary: Eclipse Mosquitto MQTT broker for VersaNode
-  website: https://mosquitto.org
-parameters:
-  - key: MQTT_PORT
-    label: MQTT Port
-    type: port
-    description: TCP port for MQTT clients
-    required: true
-    default: 1883
-    min: 1
-    max: 65535
-  - key: WS_ENABLE
-    label: Enable WebSockets
-    type: bool
-    description: Expose MQTT over WebSockets
-    default: true
-  - key: WS_PORT
-    label: WebSocket Port
-    type: port
-    description: TCP port for MQTT over WebSockets
-    default: 9001
-    min: 1
-    max: 65535
-  - key: ALLOW_ANONYMOUS
-    label: Allow anonymous
-    type: bool
-    description: Permit unauthenticated connections
-    default: false
-  - key: MQTT_USER
-    label: Username
-    type: string
-    description: Username for authenticated clients
-    required: true
-    default: user
-  - key: MQTT_PASSWORD
-    label: Password
-    type: password
-    description: Password for authenticated clients
-    required: true
-    default: changeMe
-    secret: true
-mappings:
-  env: [ MQTT_PORT, WS_ENABLE, WS_PORT, ALLOW_ANONYMOUS, MQTT_USER, MQTT_PASSWORD ]
-  files:
-    - template: templates/mosquitto.conf.j2
-      output: config/mosquitto.conf
-notes:
-  - "You will generate config/passwords on the host using mosquitto_passwd."
+  version: 1
+  metadata:
+    id: vncp-mosquitto
+    name: Mosquitto
+    summary: Auto-generated package config
+    website: https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-mosquitto
+  parameters:
+- key: MQTT_PORT
+  label: Mqtt Port
+  type: string
+  description: Auto-generated parameter for vncp-mosquitto
+  default: ""
+- key: MQTT_USER
+  label: Mqtt User
+  type: string
+  description: Auto-generated parameter for vncp-mosquitto
+  default: ""
+- key: MQTT_PASSWORD
+  label: Mqtt Password
+  type: string
+  description: Auto-generated parameter for vncp-mosquitto
+  default: ""
+  mappings:
+    env: [MQTT_PORT, MQTT_USER, MQTT_PASSWORD]
+    files: []
