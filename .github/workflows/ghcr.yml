@@ -47,7 +47,7 @@ jobs:
             name="$(basename "$pkg")"
             if [ -f "$pkg/Dockerfile" ]; then
               echo "::group::Building $name"
-              docker buildx build                 --platform linux/amd64,linux/arm64                 -t ghcr.io/${ORG}/${name}:${TAG}                -t ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}                 "$pkg"                 --push
+              docker buildx build                 --platform linux/amd64,linux/arm64                 -t ghcr.io/$ORG/$name:${TAG}                -t ghcr.io/$ORG/$name:${GITHUB_SHA::7}                 "$pkg"                 --push
               echo "::endgroup::"
             fi
           done
