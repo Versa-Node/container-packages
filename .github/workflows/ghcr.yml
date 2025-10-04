@@ -18,7 +18,7 @@
 #    - First build the package’s own Dockerfile for linux/amd64 + linux/arm64.
 #      This image MUST contain its own org.opencontainers.image.description.
 #    - Inspect a locally loaded amd64 image to detect the base runtime user
-#      **and read org.opencontainers.image.description** from that base image.
+#      and read org.opencontainers.image.description from that base image.
 #    - Build a tiny wrapper image FROM that freshly built image that:
 #       * Creates /usr/share/versanode
 #       * Copies vncp.config.yaml and README.md into the image
@@ -42,7 +42,7 @@
 #
 # NOTES:
 # - Author and maintain org.opencontainers.image.description in each package Dockerfile.
-#   The workflow merely copies that label into the wrapper so the final image has it.
+#   The workflow copies that label into the wrapper so the final image has it.
 # - This workflow injects the VNCP config + README and common labels uniformly.
 # ------------------------------------------------------------------------------
 
@@ -250,10 +250,15 @@ jobs:
               echo "No description label found in base image (package Dockerfile)."
             fi
 
-            # Wrapper Dockerfile: add VNCP files + labels, and RE-APPLY description from base
-            WRAP_DOCKERFILE="$(mktemp)"
-            trap 'rm -f "$WRAP_DOCKERFILE"' EXIT
+            # Precompute escaped description line (if any)
+            ESC_DESC_LINE=""
+            if [[ -n "${BASE_DESC}" ]]; then
+              ESC_DESC="$(python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' <<< "${BASE_DESC}")"
+              ESC_DESC_LINE="LABEL org.opencontainers.image.description=${ESC_DESC}"
+            fi
 
+            # Wrapper Dockerfile: add VNCP files + labels, and re-apply description from base
+            WRAP_DOCKERFILE="$(mktemp)"
             {
               echo '# syntax=docker/dockerfile:1.6'
               echo 'ARG BASE_IMAGE'
@@ -267,14 +272,8 @@ jobs:
               echo 'COPY --chmod=0644 vncp.config.yaml "${VNCP_DIR}/vncp.config.yaml"'
               echo 'COPY --chmod=0644 README.md        "${VNCP_DIR}/README.md"'
               echo 'RUN chmod 0644 "${VNCP_DIR}/vncp.config.yaml" "${VNCP_DIR}/README.md"'
-              if [[ -n "${BASE_DESC}" ]]; then
-                # Safely JSON-quote arbitrary text for Dockerfile syntax
-                ESC_DESC="$(python3 - <<'PY' 2>/dev/null
-                import sys, json
-                print(json.dumps(sys.stdin.read()))
-                PY
-                <<< "${BASE_DESC}")"
-                echo "LABEL org.opencontainers.image.description=${ESC_DESC}"
+              if [[ -n "${ESC_DESC_LINE}" ]]; then
+                echo "${ESC_DESC_LINE}"
               fi
               echo 'USER ${BASE_USER}'
             } > "$WRAP_DOCKERFILE"
@@ -306,9 +305,34 @@ jobs:
               -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
               "${pkg}" --push
 
+            rm -f "$WRAP_DOCKERFILE" || true
+
             BUILT_LIST+=("${name}")
             echo "::endgroup::"
           done
 
           # Expose list to later steps
           printf 'BUILT_LIST=%s\n' "${BUILT_LIST[*]}" >> "$GITHUB_ENV"
+
+      - name: Make newly built packages public (best effort)
+        if: env.BUILT_LIST != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "gh CLI not found; skipping visibility update."
+            exit 0
+          fi
+
+          for name in ${BUILT_LIST}; do
+            echo "Setting visibility PUBLIC for: ${name}"
+            gh api \
+              -X PUT \
+              -H "Accept: application/vnd.github+json" \
+              "/orgs/${OWNER}/packages/container/${name}/visibility" \
+              -f visibility=public || {
+                echo "Warn: failed to set public for ${name} (insufficient permission or already public)."
+              }
+          done
