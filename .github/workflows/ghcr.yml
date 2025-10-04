@@ -175,12 +175,13 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build & push each package (labels + index annotation for description)
+            - name: Build & push each package (with VNCP files injected)
         if: steps.changed.outputs.changed == 'true' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         env:
           TAG: ${{ steps.vars.outputs.tag }}
+        shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           shopt -s nullglob
           export CREATED="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
@@ -193,49 +194,8 @@ jobs:
             exit 0
           fi
 
+          # Track what we actually pushed, for visibility step
           BUILT_LIST=()
-
-          # --- helpers (pure shell/awk; no heredocs) --------------------------
-          join_continued_lines() {
-            # join backslash-continued lines; strip leading indent of continuation
-            awk 'BEGIN{l=""}
-                 {
-                   if(l==""){l=$0}else{sub(/^[ \t]+/,""); l=l $0}
-                   if (match(l,/\\[ \t]*$/)) { l=substr(l,1,RSTART-1) " "; next }
-                   print l; l=""
-                 }' "$1" 2>/dev/null || true
-          }
-
-          extract_desc() {
-            # from Dockerfile LABEL or first meaningful README line
-            local dockerfile="$1"; local readme="$2"
-            local joined label
-            if [[ -s "$dockerfile" ]]; then
-              joined="$(join_continued_lines "$dockerfile")"
-              # find LABEL ... org.opencontainers.image.description=...
-              label="$(printf '%s\n' "$joined" | awk '
-                BEGIN{IGNORECASE=1}
-                /^ *LABEL[ \t]/ {
-                  line=$0
-                  sub(/^ *LABEL[ \t]+/,"",line)
-                  # parse k=v (quoted or not)
-                  while (match(line, /([^= \t]+)=("[^"]*"|'\'"'"'[^'\''"]*'\'"'"'|[^ \t]+)/, m)) {
-                    k=m[1]; v=m[2]
-                    gsub(/^"|"$/, "", v); gsub(/^'\''|'\''$/, "", v)
-                    if (k=="org.opencontainers.image.description") { print v; exit }
-                    line=substr(line, RSTART+RLENGTH)
-                  }
-                }')"
-            fi
-            if [[ -n "${label:-}" ]]; then
-              printf '%s' "$label"; return
-            fi
-            # README fallback
-            if [[ -s "$readme" ]]; then
-              awk 'NF{gsub(/^# +/,""); print; exit}' "$readme"
-            fi
-          }
-          # --------------------------------------------------------------------
 
           for name in ${PKG_LIST}; do
             pkg="packages/${name}"
@@ -247,41 +207,51 @@ jobs:
             fi
 
             # Ensure VNCP files exist so COPY never fails
-            [[ -f "${pkg}/vncp.config.yaml" ]] || printf 'name: %s\nversion: "%s"\n' "$name" "${TAG}" > "${pkg}/vncp.config.yaml"
-            [[ -f "${pkg}/README.md"        ]] || printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "${pkg}/README.md"
+            if [[ ! -f "${pkg}/vncp.config.yaml" ]]; then
+              printf 'name: %s\nversion: "%s"\n' "$name" "${TAG}" > "${pkg}/vncp.config.yaml"
+            fi
+            if [[ ! -f "${pkg}/README.md" ]]; then
+              printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "${pkg}/README.md"
+            fi
 
-            # Derive description (Dockerfile LABEL or README first line)
-            OCI_DESC="$(extract_desc "${pkg}/Dockerfile" "${pkg}/README.md" || true)"
-            # normalize/truncate/escape
-            OCI_DESC="${OCI_DESC//$'\r'/ }"; OCI_DESC="${OCI_DESC//$'\n'/ }"
-            if (( ${#OCI_DESC} > 512 )); then OCI_DESC="${OCI_DESC:0:512}"; fi
-            OCI_DESC_ESC="${OCI_DESC//\"/\\\"}"
-            echo "Package description: ${OCI_DESC:-<none>}"
+            SHORT_SHA="${GITHUB_SHA::7}"
 
-            # Build base image (multi-arch) from the package Dockerfile
-            RAW_TAG="${TAG}"
+            # ------------------------------------------------------------------
+            # 1) Build BASE (multi-arch) from the package's Dockerfile
+            #    Tag as raw-${TAG} to avoid clobbering final image.
+            # ------------------------------------------------------------------
+            RAW_TAG="raw-${TAG}"
             docker buildx build \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
               --platform linux/amd64,linux/arm64 \
               -t "ghcr.io/${ORG}/${name}:${RAW_TAG}" \
-              -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
-              "${pkg}" --push
+              -t "ghcr.io/${ORG}/${name}:raw-${SHORT_SHA}" \
+              --push \
+              "${pkg}"
 
-            # Inspect runtime user (local amd64 load, then remove)
-            LOCAL_TAG="localinspect-${name}-${GITHUB_SHA}"
+            # ------------------------------------------------------------------
+            # 2) Inspect runtime user (local amd64 load)
+            # ------------------------------------------------------------------
+            LOCAL_TAG="localinspect-${name}-${SHORT_SHA}"
             docker buildx build \
               --provenance=false --sbom=false \
               --platform linux/amd64 \
               -t "${LOCAL_TAG}" \
-              "${pkg}" --load
+              --load \
+              "${pkg}"
+
             BASE_USER="$(docker inspect --format '{{.Config.User}}' "${LOCAL_TAG}" || true)"
             docker rmi -f "${LOCAL_TAG}" >/dev/null 2>&1 || true
-            [[ -n "${BASE_USER}" ]] || BASE_USER="root"
-            echo "Detected base runtime user: ${BASE_USER}"
+            if [[ -z "${BASE_USER}" ]]; then BASE_USER="root"; fi
+            echo "Detected base runtime user for ${name}: ${BASE_USER}"
 
-            # Wrapper Dockerfile (no heredocs)
-            WRAP_DF="$(mktemp)"
+            # ------------------------------------------------------------------
+            # 3) Wrapper: inject VNCP files + common labels (multi-arch)
+            #    FROM the freshly built raw image.
+            #    NOTE: The description stays in the package's Dockerfile label.
+            # ------------------------------------------------------------------
+            WRAP_DOCKERFILE="$(mktemp)"
             {
               echo '# syntax=docker/dockerfile:1.6'
               echo 'ARG BASE_IMAGE'
@@ -296,12 +266,11 @@ jobs:
               echo 'COPY --chmod=0644 README.md        "${VNCP_DIR}/README.md"'
               echo 'RUN chmod 0644 "${VNCP_DIR}/vncp.config.yaml" "${VNCP_DIR}/README.md"'
               echo 'USER ${BASE_USER}'
-            } > "$WRAP_DF"
+            } > "$WRAP_DOCKERFILE"
 
-            # Common labels (+ description label)
             LABELS=(
-              --label "io.versanode.vncp.config.path=${VNCP_DIR}/vncp.config.yaml"
-              --label "io.versanode.vncp.readme.path=${VNCP_DIR}/README.md"
+              --label "io.versanode.vncp.config.path=/usr/share/versanode/vncp.config.yaml"
+              --label "io.versanode.vncp.readme.path=/usr/share/versanode/README.md"
               --label "org.opencontainers.image.title=${name}"
               --label "org.opencontainers.image.version=${TAG}"
               --label "org.opencontainers.image.revision=${GITHUB_SHA}"
@@ -310,12 +279,9 @@ jobs:
               --label "org.opencontainers.image.created=${CREATED}"
               --label "org.opencontainers.image.vendor=${OWNER}"
               --label "org.opencontainers.image.licenses=${DEFAULT_LICENSE}"
-              --label "org.opencontainers.image.description=${OCI_DESC_ESC}"
             )
 
-            # Build wrapper multi-arch and:
-            #  - push it
-            #  - add index-level annotation for description
+            # All options before the context; context is LAST.
             docker buildx build \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
@@ -323,39 +289,18 @@ jobs:
               --build-arg "BASE_IMAGE=ghcr.io/${ORG}/${name}:${RAW_TAG}" \
               --build-arg "BASE_USER=${BASE_USER}" \
               --build-arg "VNCP_DIR=${VNCP_DIR}" \
-              -f "$WRAP_DF" \
+              -f "$WRAP_DOCKERFILE" \
               "${LABELS[@]}" \
               -t "ghcr.io/${ORG}/${name}:${TAG}" \
-              -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
+              -t "ghcr.io/${ORG}/${name}:${SHORT_SHA}" \
               --push \
-              -o "type=registry,annotation-index.org.opencontainers.image.description=${OCI_DESC_ESC}"
+              "${pkg}"
 
-            rm -f "$WRAP_DF" || true
+            rm -f "$WRAP_DOCKERFILE" || true
 
             BUILT_LIST+=("${name}")
             echo "::endgroup::"
           done
 
-          printf 'BUILT_LIST=%s\n' "${BUILT_LIST[*]}" >> "$GITHUB_ENV"
-
-      - name: Make newly built packages public (best effort)
-        if: env.BUILT_LIST != ''
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          if ! command -v gh >/dev/null 2>&1; then
-            echo "gh CLI not found; skipping visibility update."
-            exit 0
-          fi
-          for name in ${BUILT_LIST}; do
-            echo "Setting visibility PUBLIC for: ${name}"
-            gh api \
-              -X PUT \
-              -H "Accept: application/vnd.github+json" \
-              "/orgs/${OWNER}/packages/container/${name}/visibility" \
-              -f visibility=public || {
-                echo "Warn: failed to set public for ${name} (permission or already public)."
-              }
-          done
+          # Expose list to later steps
+          echo "BUILT_LIST=${BUILT_LIST[*]}" >> "$GITHUB_ENV"
