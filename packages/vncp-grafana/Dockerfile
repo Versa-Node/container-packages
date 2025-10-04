@@ -9,5 +9,5 @@ RUN chmod 0644 ${VNCP_DIR}/vncp.config.yaml ${VNCP_DIR}/README.md
 # Labels: point to where they live, plus a human-readable description
 LABEL io.versanode.vncp.config.path="${VNCP_DIR}/vncp.config.yaml" \
       io.versanode.vncp.readme.path="${VNCP_DIR}/README.md" \
-      org.opencontainers.image.description="ESPHome dashboard and compiler for ESP devices."
+      org.opencontainers.image.description="Grafana OSS visualization and dashboards."
 LABEL org.opencontainers.image.licenses="Apache-2.0"
