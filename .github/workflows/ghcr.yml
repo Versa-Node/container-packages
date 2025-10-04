@@ -5,15 +5,28 @@ on:
     branches: [ main ]
     tags: [ 'v*.*.*' ]
   workflow_dispatch:
+    inputs:
+      packages:
+        description: "Optional space-separated package names (e.g. 'vncp-grafana vncp-influxdb'). Leave empty to build all."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     env:
-      OWNER: ${{ github.repository_owner }}   # raw owner (may have caps)
+      OWNER: ${{ github.repository_owner }}            # raw owner (may have caps)
+      PACKAGES_DIR: packages
+      VNCP_DIR: /usr/share/versanode                   # where metadata lives inside the image
+      DEFAULT_LICENSE: Apache-2.0
     steps:
       - uses: actions/checkout@v4
 
@@ -44,21 +57,97 @@ jobs:
           echo "ORG=${OWNER,,}" >> "$GITHUB_ENV"
           echo "Using org: ${OWNER} -> ${ORG}"
 
-      - name: Build & push each package
+      - name: Resolve package list
+        id: pkgs
+        shell: bash
         run: |
           set -euo pipefail
-          TAG="${{ steps.vars.outputs.tag }}"
-          echo "Pushing to ghcr.io/${ORG}"
-          for pkg in packages/*; do
-            [ -d "$pkg" ] || continue
-            name="$(basename "$pkg")"
-            if [ -f "$pkg/Dockerfile" ]; then
-              echo "::group::Building $name"
-              docker buildx build \
-                --platform linux/amd64,linux/arm64 \
-                -t ghcr.io/${ORG}/${name}:${TAG} \
-                -t ghcr.io/${ORG}/${name}:${GITHUB_SHA::7} \
-                "$pkg" --push
-              echo "::endgroup::"
-            fi
+          if [[ -n "${{ inputs.packages }}" ]]; then
+            echo "list=${{ inputs.packages }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          shopt -s nullglob
+          pkgs=()
+          for d in "${PACKAGES_DIR}"/*; do
+            [[ -d "$d" ]] || continue
+            base="$(basename "$d")"
+            [[ "$base" == "vncp-template" ]] && continue
+            pkgs+=("$base")
+          done
+          (( ${#pkgs[@]} > 0 )) || { echo "No packages found in ${PACKAGES_DIR}"; exit 1; }
+          echo "list=${pkgs[*]}" >> "$GITHUB_OUTPUT"
+          echo "Will build: ${pkgs[*]}"
+
+      - name: Build & push (wrap to inject VNCP files + labels)
+        shell: bash
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          CACHE_FROM="type=gha"
+          CACHE_TO="type=gha,mode=max"
+
+          for name in ${{ steps.pkgs.outputs.list }}; do
+            pkg="${PACKAGES_DIR}/${name}"
+            echo "::group::${name}"
+
+            # sanity checks
+            [[ -f "${pkg}/Dockerfile" ]] || { echo "Missing Dockerfile in ${pkg}"; exit 2; }
+            [[ -f "${pkg}/vncp.config.yaml" ]] || { echo "Missing vncp.config.yaml in ${pkg}"; exit 3; }
+            [[ -f "${pkg}/README.md" ]] || { echo "Missing README.md in ${pkg}"; exit 4; }
+
+            RAW_TAG="raw-${GITHUB_SHA::7}"
+            CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            VERSION="${TAG#v}"  # strip leading 'v' if present
+
+            echo "Step A: build base image from package Dockerfile -> ghcr.io/${ORG}/${name}:${RAW_TAG}"
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --provenance=false --sbom=false \
+              --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
+              -t ghcr.io/${ORG}/${name}:${RAW_TAG} \
+              "${pkg}" \
+              --push
+
+            echo "Step B: wrap image to inject VNCP files + labels (description stays in package Dockerfile)"
+            WRAP_DOCKERFILE="$(mktemp)"
+            cat > "${WRAP_DOCKERFILE}" <<'EOF'
+            # syntax=docker/dockerfile:1.6
+            ARG BASE_IMAGE
+            ARG TARGETPLATFORM
+            FROM --platform=$TARGETPLATFORM ${BASE_IMAGE}
+            ARG VNCP_DIR=/usr/share/versanode
+            RUN mkdir -p ${VNCP_DIR}
+            COPY --chmod=0644 vncp.config.yaml ${VNCP_DIR}/vncp.config.yaml
+            COPY --chmod=0644 README.md        ${VNCP_DIR}/README.md
+            EOF
+            # Labels we set here (do NOT set org.opencontainers.image.description here)
+            LABELS=(
+              --label "io.versanode.vncp.config.path=${VNCP_DIR}/vncp.config.yaml"
+              --label "io.versanode.vncp.readme.path=${VNCP_DIR}/README.md"
+              --label "org.opencontainers.image.title=${name}"
+              --label "org.opencontainers.image.version=${VERSION}"
+              --label "org.opencontainers.image.revision=${GITHUB_SHA}"
+              --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}"
+              --label "org.opencontainers.image.url=https://github.com/${GITHUB_REPOSITORY}"
+              --label "org.opencontainers.image.created=${CREATED}"
+              --label "org.opencontainers.image.vendor=${OWNER}"
+              --label "org.opencontainers.image.licenses=${DEFAULT_LICENSE}"
+            )
+
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --provenance=false --sbom=false \
+              --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
+              --build-arg "BASE_IMAGE=ghcr.io/${ORG}/${name}:${RAW_TAG}" \
+              --build-arg "VNCP_DIR=${VNCP_DIR}" \
+              -f "${WRAP_DOCKERFILE}" \
+              "${LABELS[@]}" \
+              -t ghcr.io/${ORG}/${name}:${TAG} \
+              -t ghcr.io/${ORG}/${name}:${GITHUB_SHA::7} \
+              "${pkg}" \
+              --push
+
+            echo "::endgroup::"
           done
