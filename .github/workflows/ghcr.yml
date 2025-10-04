@@ -54,7 +54,6 @@ jobs:
           shopt -s nullglob
           export CREATED="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
-          # Buildx cache (keeps builds fast & saves runner disk)
           CACHE_FROM="type=gha,scope=${GITHUB_REF_NAME//\//_}"
           CACHE_TO="type=gha,scope=${GITHUB_REF_NAME//\//_},mode=max"
 
@@ -63,7 +62,7 @@ jobs:
             name="$(basename "$pkg")"
             echo "::group::Package: ${name}"
 
-            # 0) Ensure VNCP files exist so COPY never fails
+            # Ensure VNCP files exist so COPY never fails
             if [ ! -f "$pkg/vncp.config.yaml" ]; then
               printf 'name: %s\nversion: "%s"\n' "$name" "${TAG}" > "$pkg/vncp.config.yaml"
             fi
@@ -71,7 +70,7 @@ jobs:
               printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "$pkg/README.md"
             fi
 
-            # 1) Build the package’s own Dockerfile first -> raw image (multi-arch, pushed)
+            # Build base image (multi-arch) from the package Dockerfile
             RAW_TAG="${TAG}"
             docker buildx build \
               --provenance=false --sbom=false \
@@ -81,8 +80,7 @@ jobs:
               -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
               "$pkg" --push
 
-            # 2) Inspect its runtime user by doing a quick local (amd64) load
-            #    (only to read .Config.User; we drop this local image immediately)
+            # Inspect runtime user (local amd64 load, then remove)
             LOCAL_TAG="localinspect-${name}-${GITHUB_SHA}"
             docker buildx build \
               --provenance=false --sbom=false \
@@ -97,10 +95,8 @@ jobs:
             fi
             echo "Detected base runtime user: ${BASE_USER}"
 
-            # 3) Create a tiny wrapper Dockerfile that:
-            #    - switches to root
-            #    - creates ${VNCP_DIR}, copies vncp.config.yaml + README.md
-            #    - restores original user
+            # Wrapper Dockerfile: re-declare ARGs AFTER FROM so they’re visible,
+            # switch to root, create dir, copy files, restore user.
             WRAP_DOCKERFILE="$(mktemp)"
             trap 'rm -f "$WRAP_DOCKERFILE"' EXIT
 
@@ -110,15 +106,16 @@ jobs:
             'ARG BASE_USER=root' \
             'ARG VNCP_DIR=/usr/share/versanode' \
             'FROM ${BASE_IMAGE}' \
+            'ARG VNCP_DIR' \
+            'ARG BASE_USER' \
             'USER 0' \
-            'RUN mkdir -p ${VNCP_DIR}' \
-            'COPY --chmod=0644 vncp.config.yaml ${VNCP_DIR}/vncp.config.yaml' \
-            'COPY --chmod=0644 README.md        ${VNCP_DIR}/README.md' \
-            'RUN chmod 0644 ${VNCP_DIR}/vncp.config.yaml ${VNCP_DIR}/README.md' \
+            'RUN install -d -m 0755 "${VNCP_DIR}"' \
+            'COPY --chmod=0644 vncp.config.yaml "${VNCP_DIR}/vncp.config.yaml"' \
+            'COPY --chmod=0644 README.md        "${VNCP_DIR}/README.md"' \
+            'RUN chmod 0644 "${VNCP_DIR}/vncp.config.yaml" "${VNCP_DIR}/README.md"' \
             'USER ${BASE_USER}' \
             > "$WRAP_DOCKERFILE"
 
-            # Common OCI labels (keep description inside each package’s Dockerfile)
             LABELS=(
               --label "io.versanode.vncp.config.path=${VNCP_DIR}/vncp.config.yaml"
               --label "io.versanode.vncp.readme.path=${VNCP_DIR}/README.md"
@@ -131,10 +128,8 @@ jobs:
               --label "org.opencontainers.image.vendor=${OWNER}"
               --label "org.opencontainers.image.licenses=${DEFAULT_LICENSE}"
             )
-            # NOTE: Do NOT set org.opencontainers.image.description here.
-            # Keep that in each package’s Dockerfile as you requested.
+            # Keep org.opencontainers.image.description in each package’s Dockerfile.
 
-            # 4) Build the final image (multi-arch), injecting VNCP files
             docker buildx build \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
