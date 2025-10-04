@@ -95,11 +95,9 @@ jobs:
             fi
             echo "Detected base runtime user: ${BASE_USER}"
 
-            # Wrapper Dockerfile: re-declare ARGs AFTER FROM so they’re visible,
-            # switch to root, create dir, copy files, restore user.
+            # Wrapper Dockerfile: add VNCP files + labels without touching package Dockerfile
             WRAP_DOCKERFILE="$(mktemp)"
             trap 'rm -f "$WRAP_DOCKERFILE"' EXIT
-
             printf '%s\n' \
             '# syntax=docker/dockerfile:1.6' \
             'ARG BASE_IMAGE' \
@@ -144,4 +142,26 @@ jobs:
               "$pkg" --push
 
             echo "::endgroup::"
+          done
+
+      - name: Make GHCR packages public
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ORG: ${{ env.ORG }}
+        run: |
+          set -euo pipefail
+          hdrs=(-H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json")
+          for pkg in packages/*; do
+            [ -d "$pkg" ] || continue
+            name="$(basename "$pkg")"
+            echo "Setting ghcr.io/${ORG}/${name} visibility to public…"
+            status="$(curl -sS -w '%{http_code}' -o /tmp/resp.json \
+              -X PUT "${hdrs[@]}" \
+              "https://api.github.com/orgs/${ORG}/packages/container/${name}/visibility" \
+              -d '{"visibility":"public"}' || true)"
+            if [ "$status" != "200" ]; then
+              echo "::warning::Could not set ${name} public (HTTP ${status}). Check org package settings or permissions."
+              cat /tmp/resp.json || true
+            fi
           done
