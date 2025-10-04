@@ -17,12 +17,13 @@
 # 3) Build strategy (per package):
 #    - First build the package’s own Dockerfile for linux/amd64 + linux/arm64.
 #      This image MUST contain its own org.opencontainers.image.description.
-#    - Inspect a locally loaded amd64 image to detect the base runtime user.
+#    - Inspect a locally loaded amd64 image to detect the base runtime user
+#      **and read org.opencontainers.image.description** from that base image.
 #    - Build a tiny wrapper image FROM that freshly built image that:
 #       * Creates /usr/share/versanode
 #       * Copies vncp.config.yaml and README.md into the image
+#       * Propagates the description label from the base image
 #       * Applies common labels (config paths, version, source, etc.)
-#      (Description remains in the package Dockerfile.)
 #
 # 4) Tags:
 #    - On tag builds, tag=the tag name (e.g., v1.2.3)
@@ -40,7 +41,8 @@
 #    - Uses ${{ github.repository_owner }} (lowercased) as the GHCR org/owner.
 #
 # NOTES:
-# - Only org.opencontainers.image.description stays in each package Dockerfile.
+# - Author and maintain org.opencontainers.image.description in each package Dockerfile.
+#   The workflow merely copies that label into the wrapper so the final image has it.
 # - This workflow injects the VNCP config + README and common labels uniformly.
 # ------------------------------------------------------------------------------
 
@@ -213,12 +215,8 @@ jobs:
             fi
 
             # Ensure VNCP files exist so COPY never fails
-            if [[ ! -f "${pkg}/vncp.config.yaml" ]]; then
-              printf 'name: %s\nversion: "%s"\n' "$name" "${TAG}" > "${pkg}/vncp.config.yaml"
-            fi
-            if [[ ! -f "${pkg}/README.md" ]]; then
-              printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "${pkg}/README.md"
-            fi
+            [[ -f "${pkg}/vncp.config.yaml" ]] || printf 'name: %s\nversion: "%s"\n' "$name" "${TAG}" > "${pkg}/vncp.config.yaml"
+            [[ -f "${pkg}/README.md" ]] || printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "${pkg}/README.md"
 
             # Build base image (multi-arch) from the package Dockerfile
             RAW_TAG="${TAG}"
@@ -230,7 +228,7 @@ jobs:
               -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
               "${pkg}" --push
 
-            # Inspect runtime user (local amd64 load, then remove)
+            # Inspect runtime user + read description from a locally loaded amd64 image
             LOCAL_TAG="localinspect-${name}-${GITHUB_SHA}"
             docker buildx build \
               --provenance=false --sbom=false \
@@ -238,14 +236,24 @@ jobs:
               -t "${LOCAL_TAG}" \
               "${pkg}" --load
 
-            BASE_USER="$(docker inspect --format '{{.Config.User}}' "${LOCAL_TAG}" || true)"
-            docker rmi -f "${LOCAL_TAG}" >/dev/null 2>&1 || true
-            if [[ -z "${BASE_USER}" ]]; then BASE_USER="root"; fi
-            echo "Detected base runtime user: ${BASE_USER}"
+            BASE_USER="$(docker inspect --format '{{.Config.User}}' "${LOCAL_TAG}" 2>/dev/null || true)"
+            [[ -n "${BASE_USER}" ]] || BASE_USER="root"
 
-            # Wrapper Dockerfile: add VNCP files + labels, keep description in package Dockerfile
+            BASE_DESC="$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.description" }}' "${LOCAL_TAG}" 2>/dev/null || true)"
+            BASE_DESC="${BASE_DESC//$'\r'/}"
+
+            docker rmi -f "${LOCAL_TAG}" >/dev/null 2>&1 || true
+            echo "Detected base runtime user: ${BASE_USER}"
+            if [[ -n "${BASE_DESC}" ]]; then
+              echo "Detected base description (first 80 chars): ${BASE_DESC:0:80}"
+            else
+              echo "No description label found in base image (package Dockerfile)."
+            fi
+
+            # Wrapper Dockerfile: add VNCP files + labels, and RE-APPLY description from base
             WRAP_DOCKERFILE="$(mktemp)"
             trap 'rm -f "$WRAP_DOCKERFILE"' EXIT
+
             {
               echo '# syntax=docker/dockerfile:1.6'
               echo 'ARG BASE_IMAGE'
@@ -259,6 +267,15 @@ jobs:
               echo 'COPY --chmod=0644 vncp.config.yaml "${VNCP_DIR}/vncp.config.yaml"'
               echo 'COPY --chmod=0644 README.md        "${VNCP_DIR}/README.md"'
               echo 'RUN chmod 0644 "${VNCP_DIR}/vncp.config.yaml" "${VNCP_DIR}/README.md"'
+              if [[ -n "${BASE_DESC}" ]]; then
+                # Safely JSON-quote arbitrary text for Dockerfile syntax
+                ESC_DESC="$(python3 - <<'PY' 2>/dev/null
+                import sys, json
+                print(json.dumps(sys.stdin.read()))
+                PY
+                <<< "${BASE_DESC}")"
+                echo "LABEL org.opencontainers.image.description=${ESC_DESC}"
+              fi
               echo 'USER ${BASE_USER}'
             } > "$WRAP_DOCKERFILE"
 
@@ -274,7 +291,7 @@ jobs:
               --label "org.opencontainers.image.vendor=${OWNER}"
               --label "org.opencontainers.image.licenses=${DEFAULT_LICENSE}"
             )
-            # NOTE: org.opencontainers.image.description remains in each package's Dockerfile.
+            # NOTE: description stays authored in each package's Dockerfile; we just propagate it.
 
             docker buildx build \
               --provenance=false --sbom=false \
@@ -295,26 +312,3 @@ jobs:
 
           # Expose list to later steps
           printf 'BUILT_LIST=%s\n' "${BUILT_LIST[*]}" >> "$GITHUB_ENV"
-
-      - name: Make newly built packages public (best effort)
-        if: env.BUILT_LIST != ''
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          if ! command -v gh >/dev/null 2>&1; then
-            echo "gh CLI not found; skipping visibility update."
-            exit 0
-          fi
-
-          for name in ${BUILT_LIST}; do
-            echo "Setting visibility PUBLIC for: ${name}"
-            gh api \
-              -X PUT \
-              -H "Accept: application/vnd.github+json" \
-              "/orgs/${OWNER}/packages/container/${name}/visibility" \
-              -f visibility=public || {
-                echo "Warn: failed to set public for ${name} (insufficient permission or already public)."
-              }
-          done
