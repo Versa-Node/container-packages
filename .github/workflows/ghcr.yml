@@ -1,71 +1,69 @@
 # ------------------------------------------------------------------------------
-# Publish packages to GHCR
+# Publish packages to GHCR — MANUAL
 #
 # HOW THIS WORKS (high-level):
-# 1) Triggers:
-#    - On push to main (only if files under packages/** or common CI files changed)
-#    - On tags matching v*.*.* (always builds ALL packages)
-#    - Manual dispatch with:
-#        inputs.changed_only (default true)  -> build only changed packages
-#        inputs.packages     (optional list) -> build only the listed packages
+# 1) Trigger: workflow_dispatch (manual run)
+#    - inputs.tag          : tag to publish (e.g., latest, v1.2.3)
+#    - inputs.packages     : optional space/comma list of package dirs under packages/
+#    - inputs.make_public  : mark built GHCR packages as PUBLIC after push (default: true)
+#    - inputs.push_short_sha: also push a <short-sha> tag for traceability (default: true)
 #
-# 2) Change detection:
-#    - Diffs current commit vs previous and notes packages/<name>/ changed.
-#    - If workflow/shared scripts changed, builds ALL packages.
+# 2) Package selection:
+#    - If you supply "packages", only those are built.
+#    - Otherwise, it builds ALL direct subfolders under ./packages that contain a Dockerfile.
 #
 # 3) Build strategy (per package):
-#    - Build the package Dockerfile for linux/amd64 + linux/arm64.
-#    - Detect base runtime user by loading an amd64 image locally.
-#    - Build a tiny wrapper image FROM that image that:
-#        * Creates /usr/share/versanode
-#        * Copies vncp.config.yaml and README.md into the image
-#        * Applies common labels (config paths, version, source, etc.)
-#        * Sets org.opencontainers.image.description on the image config
-#          AND annotates the manifest index with the same description.
+#    - Build the package's Dockerfile for linux/amd64+linux/arm64 as a "raw" image:
+#        ghcr.io/<org>/<name>:raw-<tag> and :raw-<shortsha>
+#      The package Dockerfile is expected to carry its own
+#      `org.opencontainers.image.description` label.
+#    - Do a local amd64 load to inspect and detect the base runtime user.
+#    - Build a tiny wrapper image FROM the raw image that:
+#        * creates /usr/share/versanode
+#        * copies vncp.config.yaml + README.md
+#        * applies common labels (config paths, source, version, etc.)
+#      Pushes final multi-arch tags:
+#        ghcr.io/<org>/<name>:<tag> and (optionally) :<shortsha>
 #
-# 4) Tags:
-#    - On tag builds, tag=the tag name (e.g., v1.2.3); else tag=latest
-#    - Also pushes a short-SHA tag for traceability
+# 4) Visibility:
+#    - If enabled, sets visibility=public for the packages built in this run (best effort).
 #
-# 5) Visibility:
-#    - After pushing, tries to mark the just-built packages PUBLIC on GHCR
-#      (best-effort; doesn’t fail the job if not permitted).
+# 5) Caching:
+#    - Uses GitHub Actions cache for Buildx to speed up rebuilds.
 #
-# 6) Caching:
-#    - Uses GitHub Actions cache for buildx to speed up rebuilds.
-#
-# 7) Ownership:
+# 6) Ownership:
 #    - Uses ${{ github.repository_owner }} (lowercased) as the GHCR org/owner.
 #
 # NOTES:
-# - Prefer putting org.opencontainers.image.description in each package Dockerfile.
-# - This workflow still injects that description into the final wrapper AND
-#   annotates the manifest index so the GHCR package page shows it.
+# - The image description that shows in GitHub Packages should come from each
+#   package Dockerfile via `org.opencontainers.image.description`.
+# - This workflow *does not* edit the description; it just ensures common VNCP
+#   files/labels are injected consistently in a wrapper image.
 # ------------------------------------------------------------------------------
 
 name: Publish packages to GHCR
 
 on:
-  push:
-    branches: [ main ]
-    tags: [ 'v*.*.*' ]
-    paths:
-      - 'packages/**'
-      - '.github/workflows/**'
-      - 'scripts/**'
-      - 'common/**'
   workflow_dispatch:
     inputs:
-      changed_only:
-        description: "Build ONLY packages that changed"
+      tag:
+        description: "Tag to publish (e.g., latest or v1.2.3)"
+        default: "latest"
+        required: true
+      packages:
+        description: "Space/comma separated package names under packages/ (optional)"
+        required: false
+      make_public:
+        description: "Set built packages to PUBLIC visibility"
         type: boolean
         default: true
-      packages:
-        description: "Comma/space separated package names (overrides detection)"
-        required: false
+      push_short_sha:
+        description: "Also push a <short-sha> tag"
+        type: boolean
+        default: true
 
 concurrency:
-  group: publish-${{ github.ref }}-${{ github.workflow }}
+  group: publish-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -75,13 +73,15 @@ jobs:
     permissions:
       contents: read
       packages: write
+
     env:
-      OWNER: ${{ github.repository_owner }}
+      OWNER: ${{ github.repository_owner }}   # raw owner (may have caps)
       DEFAULT_LICENSE: Apache-2.0
       VNCP_DIR: /usr/share/versanode
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -98,101 +98,62 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute tag
-        id: vars
-        run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Lowercase owner for image tags
+      - name: Lowercase owner for image namespace
         run: |
           echo "ORG=${OWNER,,}" >> "$GITHUB_ENV"
           echo "Using org: ${OWNER} -> ${ORG}"
 
-      - name: Determine packages to build
-        id: changed
+      - name: Compute inputs and package list
+        id: plan
+        shell: bash
         env:
-          INPUT_CHANGED_ONLY: ${{ inputs.changed_only }}
           INPUT_PACKAGES: ${{ inputs.packages }}
         run: |
           set -euo pipefail
           shopt -s nullglob
 
-          all_pkgs() { (cd packages && ls -1d */ 2>/dev/null | sed 's:/$::'); }
-
-          FORCE_ALL=0
-          PKGS=()
-
-          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
-            FORCE_ALL=1
+          TAG_IN="${{ inputs.tag }}"
+          if [[ -z "${TAG_IN}" ]]; then
+            echo "Tag input is empty; defaulting to 'latest'"
+            TAG_IN="latest"
           fi
+          echo "tag=${TAG_IN}" >> "$GITHUB_OUTPUT"
 
+          # Build package list
           if [[ -n "${INPUT_PACKAGES:-}" ]]; then
-            mapfile -t PKGS < <(printf '%s\n' "${INPUT_PACKAGES//,/ }" | tr -s ' ,\n' '\n' | sed '/^$/d')
-            echo "Manual selection: ${PKGS[*]}"
-          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${INPUT_CHANGED_ONLY:-true}" == "false" ]]; then
-            FORCE_ALL=1
+            # Normalize spaces/commas
+            mapfile -t PKGS < <(printf '%s\n' "${INPUT_PACKAGES//,/ }" | tr -s ' \n' '\n' | sed '/^$/d')
+          else
+            # All subfolders under packages/ that contain a Dockerfile
+            mapfile -t PKGS < <(cd packages && for d in */ ; do [[ -f "${d}Dockerfile" ]] && echo "${d%/}"; done)
           fi
-
-          if [[ ${#PKGS[@]} -eq 0 && $FORCE_ALL -eq 0 ]]; then
-            BASE="${{ github.event.before }}"
-            HEAD="${{ github.sha }}"
-            if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
-              BASE="$(git rev-parse HEAD^ || echo '')"
-            fi
-            echo "Diff range: $BASE..$HEAD"
-
-            CHANGED="$(git diff --name-only "$BASE" "$HEAD" -- \
-              'packages/**' '.github/workflows/**' 'scripts/**' 'common/**' || true)"
-
-            if grep -qE '^(\.github/workflows/|scripts/|common/)' <<< "$CHANGED"; then
-              FORCE_ALL=1
-            else
-              mapfile -t PKGS < <(awk -F/ '/^packages\//{print $2}' <<< "$CHANGED" | sort -u)
-            fi
-          fi
-
-          if [[ $FORCE_ALL -eq 1 ]]; then
-            mapfile -t PKGS < <(all_pkgs)
-          fi
-
-          FILTERED=()
-          for p in "${PKGS[@]:-}"; do
-            [[ -d "packages/$p" ]] && FILTERED+=("$p")
-          done
-          PKGS=("${FILTERED[@]}")
 
           if [[ ${#PKGS[@]} -eq 0 ]]; then
-            echo "No package changes detected."
+            echo "No packages found to build."
             echo "PKG_LIST=" >> "$GITHUB_ENV"
-            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "has_pkgs=false" >> "$GITHUB_OUTPUT"
           else
             echo "Will build: ${PKGS[*]}"
             printf 'PKG_LIST=%s\n' "${PKGS[*]}" >> "$GITHUB_ENV"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "has_pkgs=true" >> "$GITHUB_OUTPUT"
           fi
 
-            - name: Build & push each package (with VNCP files injected)
-        if: steps.changed.outputs.changed == 'true' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+      - name: Build & push each package (with VNCP files injected)
+        if: steps.plan.outputs.has_pkgs == 'true'
         env:
-          TAG: ${{ steps.vars.outputs.tag }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          PUSH_SHORT_SHA: ${{ inputs.push_short_sha }}
         shell: bash
         run: |
           set -euxo pipefail
           shopt -s nullglob
+
           export CREATED="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          SHORT_SHA="${GITHUB_SHA::7}"
 
           CACHE_KEY="${GITHUB_REF_NAME//\//_}"
           CACHE_FROM="type=gha,scope=${CACHE_KEY}"
           CACHE_TO="type=gha,scope=${CACHE_KEY},mode=max"
-
-          if [[ -z "${PKG_LIST:-}" ]]; then
-            echo "Nothing to build."
-            exit 0
-          fi
 
           # Track what we actually pushed, for visibility step
           BUILT_LIST=()
@@ -214,25 +175,25 @@ jobs:
               printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "${pkg}/README.md"
             fi
 
-            SHORT_SHA="${GITHUB_SHA::7}"
-
-            # ------------------------------------------------------------------
-            # 1) Build BASE (multi-arch) from the package's Dockerfile
-            #    Tag as raw-${TAG} to avoid clobbering final image.
-            # ------------------------------------------------------------------
+            # ---------------------------
+            # 1) Build RAW multi-arch image
+            # ---------------------------
             RAW_TAG="raw-${TAG}"
+            RAW_SHA_TAG="raw-${SHORT_SHA}"
+
+            # All flags BEFORE the build context; context LAST.
             docker buildx build \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
               --platform linux/amd64,linux/arm64 \
               -t "ghcr.io/${ORG}/${name}:${RAW_TAG}" \
-              -t "ghcr.io/${ORG}/${name}:raw-${SHORT_SHA}" \
+              -t "ghcr.io/${ORG}/${name}:${RAW_SHA_TAG}" \
               --push \
               "${pkg}"
 
-            # ------------------------------------------------------------------
+            # ---------------------------
             # 2) Inspect runtime user (local amd64 load)
-            # ------------------------------------------------------------------
+            # ---------------------------
             LOCAL_TAG="localinspect-${name}-${SHORT_SHA}"
             docker buildx build \
               --provenance=false --sbom=false \
@@ -246,11 +207,9 @@ jobs:
             if [[ -z "${BASE_USER}" ]]; then BASE_USER="root"; fi
             echo "Detected base runtime user for ${name}: ${BASE_USER}"
 
-            # ------------------------------------------------------------------
+            # ---------------------------
             # 3) Wrapper: inject VNCP files + common labels (multi-arch)
-            #    FROM the freshly built raw image.
-            #    NOTE: The description stays in the package's Dockerfile label.
-            # ------------------------------------------------------------------
+            # ---------------------------
             WRAP_DOCKERFILE="$(mktemp)"
             {
               echo '# syntax=docker/dockerfile:1.6'
@@ -280,19 +239,25 @@ jobs:
               --label "org.opencontainers.image.vendor=${OWNER}"
               --label "org.opencontainers.image.licenses=${DEFAULT_LICENSE}"
             )
+            # NOTE: org.opencontainers.image.description stays in each package's Dockerfile.
 
-            # All options before the context; context is LAST.
+            # Main tag
+            FINAL_TAGS=( "-t" "ghcr.io/${ORG}/${name}:${TAG}" )
+            # Optional short-sha tag
+            if [[ "${PUSH_SHORT_SHA}" == "true" ]]; then
+              FINAL_TAGS+=( "-t" "ghcr.io/${ORG}/${name}:${SHORT_SHA}" )
+            fi
+
             docker buildx build \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
               --platform linux/amd64,linux/arm64 \
-              --build-arg "BASE_IMAGE=ghcr.io/${ORG}/${name}:${RAW_TAG}" \
+              --build-arg "BASE_IMAGE=ghcr.io/${ORG}/${name}:raw-${TAG}" \
               --build-arg "BASE_USER=${BASE_USER}" \
               --build-arg "VNCP_DIR=${VNCP_DIR}" \
               -f "$WRAP_DOCKERFILE" \
               "${LABELS[@]}" \
-              -t "ghcr.io/${ORG}/${name}:${TAG}" \
-              -t "ghcr.io/${ORG}/${name}:${SHORT_SHA}" \
+              "${FINAL_TAGS[@]}" \
               --push \
               "${pkg}"
 
@@ -304,3 +269,27 @@ jobs:
 
           # Expose list to later steps
           echo "BUILT_LIST=${BUILT_LIST[*]}" >> "$GITHUB_ENV"
+
+      - name: Make newly built packages public (best effort)
+        if: ${{ inputs.make_public && env.BUILT_LIST != '' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "gh CLI not found; skipping visibility update."
+            exit 0
+          fi
+
+          for name in ${BUILT_LIST}; do
+            echo "Setting visibility PUBLIC for: ${name}"
+            gh api \
+              -X PUT \
+              -H "Accept: application/vnd.github+json" \
+              "/orgs/${OWNER}/packages/container/${name}/visibility" \
+              -f visibility=public || {
+                echo "Warn: failed to set public for ${name} (insufficient permission or already public)."
+              }
+          done
