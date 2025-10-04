@@ -23,7 +23,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     env:
-      OWNER: ${{ github.repository_owner }}
+      OWNER: ${{ github.repository_owner }}     # e.g. Versa-Node
       PACKAGES_DIR: packages
       VNCP_DIR: /usr/share/versanode
       DEFAULT_LICENSE: Apache-2.0
@@ -114,17 +114,16 @@ jobs:
             WRAP_DOCKERFILE="$(mktemp)"
             trap 'rm -f "$WRAP_DOCKERFILE"' EXIT
 
-            # IMPORTANT: use a unique, quoted heredoc delimiter
-            cat > "$WRAP_DOCKERFILE" <<'WRAP_DF'
-            # syntax=docker/dockerfile:1.6
-            ARG BASE_IMAGE
-            ARG TARGETPLATFORM
-            FROM --platform=$TARGETPLATFORM ${BASE_IMAGE}
-            ARG VNCP_DIR=/usr/share/versanode
-            RUN mkdir -p ${VNCP_DIR}
-            COPY --chmod=0644 vncp.config.yaml ${VNCP_DIR}/vncp.config.yaml
-            COPY --chmod=0644 README.md        ${VNCP_DIR}/README.md
-            WRAP_DF
+            # Write wrapper Dockerfile without heredocs
+            printf '%s\n' \
+            '# syntax=docker/dockerfile:1.6' \
+            'ARG BASE_IMAGE' \
+            'ARG TARGETPLATFORM' \
+            'FROM --platform=$TARGETPLATFORM ${BASE_IMAGE}' \
+            'ARG VNCP_DIR=/usr/share/versanode' \
+            'RUN mkdir -p ${VNCP_DIR}' \
+            'COPY --chmod=0644 vncp.config.yaml ${VNCP_DIR}/vncp.config.yaml' \
+            'COPY --chmod=0644 README.md        ${VNCP_DIR}/README.md' > "$WRAP_DOCKERFILE"
 
             LABELS=(
               --label "io.versanode.vncp.config.path=${VNCP_DIR}/vncp.config.yaml"
@@ -139,7 +138,7 @@ jobs:
               --label "org.opencontainers.image.licenses=${DEFAULT_LICENSE}"
             )
             # NOTE: we intentionally DO NOT set org.opencontainers.image.description here;
-            # keep that in each package's Dockerfile.
+            # keep that in each package's Dockerfile (package-specific).
 
             docker buildx build \
               --platform linux/amd64,linux/arm64 \
