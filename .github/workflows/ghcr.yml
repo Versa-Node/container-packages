@@ -1,3 +1,49 @@
+# ------------------------------------------------------------------------------
+# Publish packages to GHCR
+#
+# HOW THIS WORKS (high-level):
+# 1) Triggers:
+#    - On push to main (only if files under packages/** or common CI files changed)
+#    - On tags matching v*.*.* (always builds ALL packages)
+#    - Manual dispatch with:
+#        inputs.changed_only (default true)  -> build only changed packages
+#        inputs.packages     (optional list) -> build only the listed packages
+#
+# 2) Change detection:
+#    - Compares current commit to the previous (or tag) and detects which
+#      package directories under packages/<name>/ changed.
+#    - If workflow or shared scripts changed, builds ALL packages.
+#
+# 3) Build strategy (per package):
+#    - First build the package’s own Dockerfile for linux/amd64 + linux/arm64.
+#      This image MUST contain its own org.opencontainers.image.description.
+#    - Inspect a locally loaded amd64 image to detect the base runtime user.
+#    - Build a tiny wrapper image FROM that freshly built image that:
+#       * Creates /usr/share/versanode
+#       * Copies vncp.config.yaml and README.md into the image
+#       * Applies common labels (config paths, version, source, etc.)
+#      (Description remains in the package Dockerfile.)
+#
+# 4) Tags:
+#    - On tag builds, tag=the tag name (e.g., v1.2.3)
+#    - On branch builds, tag=latest
+#    - Also pushes a short-SHA tag for traceability
+#
+# 5) Visibility:
+#    - After pushing, tries to mark just the packages built in this run as
+#      PUBLIC on GHCR (best-effort; won’t fail the job if not permitted).
+#
+# 6) Caching:
+#    - Uses GitHub Actions cache for buildx to speed up rebuilds.
+#
+# 7) Ownership:
+#    - Uses ${{ github.repository_owner }} (lowercased) as the GHCR org/owner.
+#
+# NOTES:
+# - Only org.opencontainers.image.description stays in each package Dockerfile.
+# - This workflow injects the VNCP config + README and common labels uniformly.
+# ------------------------------------------------------------------------------
+
 name: Publish packages to GHCR
 
 on:
@@ -26,6 +72,7 @@ concurrency:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     permissions:
       contents: read
       packages: write
@@ -80,26 +127,24 @@ jobs:
           FORCE_ALL=0
           PKGS=()
 
-          # 1) If tag build -> build ALL
+          # If tag build -> build ALL
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
             FORCE_ALL=1
           fi
 
-          # 2) workflow_dispatch overrides
+          # workflow_dispatch overrides
           if [[ -n "${INPUT_PACKAGES:-}" ]]; then
-            # normalize separators (comma/space/newline) into newlines
-            mapfile -t PKGS < <(printf '%s\n' "${INPUT_PACKAGES//,/ }" | tr -s ' ' '\n' | sed '/^$/d')
+            mapfile -t PKGS < <(printf '%s\n' "${INPUT_PACKAGES//,/ }" | tr -s ' ,\n' '\n' | sed '/^$/d')
             echo "Manual selection: ${PKGS[*]}"
           elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${INPUT_CHANGED_ONLY:-true}" == "false" ]]; then
             FORCE_ALL=1
           fi
 
-          # 3) If not set yet, detect changed package dirs
+          # Detect changed package dirs if not forced/all/manual
           if [[ ${#PKGS[@]} -eq 0 && $FORCE_ALL -eq 0 ]]; then
             BASE="${{ github.event.before }}"
             HEAD="${{ github.sha }}"
             if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
-              # first push or unknown base; fallback to previous commit
               BASE="$(git rev-parse HEAD^ || echo '')"
             fi
 
@@ -115,12 +160,12 @@ jobs:
             fi
           fi
 
-          # 4) Expand to ALL if requested
+          # Expand to ALL if requested
           if [[ $FORCE_ALL -eq 1 ]]; then
             mapfile -t PKGS < <(all_pkgs)
           fi
 
-          # 5) Filter out missing dirs (e.g., deleted)
+          # Filter out missing dirs (e.g., deleted)
           FILTERED=()
           for p in "${PKGS[@]:-}"; do
             [[ -d "packages/$p" ]] && FILTERED+=("$p")
@@ -154,6 +199,9 @@ jobs:
             echo "Nothing to build."
             exit 0
           fi
+
+          # Track what we actually pushed, for visibility step
+          BUILT_LIST=()
 
           for name in ${PKG_LIST}; do
             pkg="packages/${name}"
@@ -241,5 +289,32 @@ jobs:
               -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
               "${pkg}" --push
 
+            BUILT_LIST+=("${name}")
             echo "::endgroup::"
+          done
+
+          # Expose list to later steps
+          printf 'BUILT_LIST=%s\n' "${BUILT_LIST[*]}" >> "$GITHUB_ENV"
+
+      - name: Make newly built packages public (best effort)
+        if: env.BUILT_LIST != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "gh CLI not found; skipping visibility update."
+            exit 0
+          fi
+
+          for name in ${BUILT_LIST}; do
+            echo "Setting visibility PUBLIC for: ${name}"
+            gh api \
+              -X PUT \
+              -H "Accept: application/vnd.github+json" \
+              "/orgs/${OWNER}/packages/container/${name}/visibility" \
+              -f visibility=public || {
+                echo "Warn: failed to set public for ${name} (insufficient permission or already public)."
+              }
           done
