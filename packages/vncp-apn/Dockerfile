@@ -1,16 +1,2 @@
 FROM docker.io/library/alpine:3.20
-# Where we'll store VNCP metadata/files
-ARG VNCP_DIR=/usr/share/versanode
-
-# Copy the config and README into the image
-COPY vncp.config.yaml ${VNCP_DIR}/vncp.config.yaml
-COPY README.md        ${VNCP_DIR}/README.md
-
-# (optional) make them readable
-RUN chmod 0644 ${VNCP_DIR}/vncp.config.yaml ${VNCP_DIR}/README.md
-
-# Labels: point to where they live, plus a human-readable description
-LABEL io.versanode.vncp.config.path="${VNCP_DIR}/vncp.config.yaml" \
-      io.versanode.vncp.readme.path="${VNCP_DIR}/README.md" \
-      org.opencontainers.image.description="Access Point / networking utilities container for VersaNode gateways."
-LABEL org.opencontainers.image.licenses="Apache-2.0"
+LABEL org.opencontainers.image.description="Access Point / networking utilities container for VersaNode gateways."
