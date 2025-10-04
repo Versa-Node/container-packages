@@ -210,37 +210,37 @@ jobs:
             # ---- Extract org.opencontainers.image.description from the package Dockerfile
             export PKG_DOCKERFILE="${pkg}/Dockerfile"
             OCI_DESC="$(
-python3 - <<'PY'
-import os, shlex, re, pathlib, sys
-p = pathlib.Path(os.environ.get("PKG_DOCKERFILE","Dockerfile"))
-try:
-    text = p.read_text()
-except Exception:
-    print("")
-    sys.exit(0)
-# Join backslash-continued LABEL lines
-lines, buf = [], ""
-for raw in text.splitlines():
-    if not buf: buf = raw
-    else: buf += raw.lstrip()
-    if buf.rstrip().endswith("\\"):
-        buf = buf.rstrip()[:-1] + " "
-        continue
-    lines.append(buf); buf = ""
-desc = ""
-for line in lines:
-    m = re.match(r"\s*LABEL\s+(.*)$", line)
-    if not m: continue
-    try: parts = shlex.split(m.group(1))
-    except Exception: parts = m.group(1).split()
-    for part in parts:
-        if "=" not in part: continue
-        k, v = part.split("=", 1)
-        if k.strip() == "org.opencontainers.image.description":
-            print(v.strip())
-            sys.exit(0)
-print("")
-PY
+            python3 - <<'PY'
+            import os, shlex, re, pathlib, sys
+            p = pathlib.Path(os.environ.get("PKG_DOCKERFILE","Dockerfile"))
+            try:
+                text = p.read_text()
+            except Exception:
+                print("")
+                sys.exit(0)
+            # Join backslash-continued LABEL lines
+            lines, buf = [], ""
+            for raw in text.splitlines():
+                if not buf: buf = raw
+                else: buf += raw.lstrip()
+                if buf.rstrip().endswith("\\"):
+                    buf = buf.rstrip()[:-1] + " "
+                    continue
+                lines.append(buf); buf = ""
+            desc = ""
+            for line in lines:
+                m = re.match(r"\s*LABEL\s+(.*)$", line)
+                if not m: continue
+                try: parts = shlex.split(m.group(1))
+                except Exception: parts = m.group(1).split()
+                for part in parts:
+                    if "=" not in part: continue
+                    k, v = part.split("=", 1)
+                    if k.strip() == "org.opencontainers.image.description":
+                        print(v.strip())
+                        sys.exit(0)
+            print("")
+            PY
             )"
             # Normalize + truncate for GH limit (512 chars)
             OCI_DESC="${OCI_DESC//$'\n'/ }"; OCI_DESC="${OCI_DESC//$'\r'/ }"
