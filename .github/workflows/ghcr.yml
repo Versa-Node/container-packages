@@ -24,7 +24,7 @@
 #          **and** annotates the manifest index with the same description.
 #
 # 4) Tags:
-#    - On tag builds, tag=the tag name (e.g., v1.2.3); otherwise tag=latest
+#    - On tag builds, tag=the tag name (e.g., v1.2.3); else tag=latest
 #    - Also pushes a short-SHA tag for traceability
 #
 # 5) Visibility:
@@ -38,7 +38,7 @@
 #    - Uses ${{ github.repository_owner }} (lowercased) as the GHCR org/owner.
 #
 # NOTES:
-# - Keep org.opencontainers.image.description in each package Dockerfile.
+# - Keep org.opencontainers.image.description in each package Dockerfile if you can.
 # - This workflow also injects that description into the final wrapper AND
 #   annotates the manifest index so the GHCR package page shows it.
 # ------------------------------------------------------------------------------
@@ -207,45 +207,65 @@ jobs:
             [[ -f "${pkg}/vncp.config.yaml" ]] || printf 'name: %s\nversion: "%s"\n' "$name" "${TAG}" > "${pkg}/vncp.config.yaml"
             [[ -f "${pkg}/README.md"        ]] || printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "${pkg}/README.md"
 
-            # ---- Extract org.opencontainers.image.description from the package Dockerfile
+            # ---- Extract description with a tiny Python helper written to a temp file
             export PKG_DOCKERFILE="${pkg}/Dockerfile"
-            OCI_DESC="$(
-            python3 - <<'PY'
-            import os, shlex, re, pathlib, sys
-            p = pathlib.Path(os.environ.get("PKG_DOCKERFILE","Dockerfile"))
-            try:
-                text = p.read_text()
-            except Exception:
-                print("")
-                sys.exit(0)
-            # Join backslash-continued LABEL lines
-            lines, buf = [], ""
-            for raw in text.splitlines():
-                if not buf: buf = raw
-                else: buf += raw.lstrip()
-                if buf.rstrip().endswith("\\"):
-                    buf = buf.rstrip()[:-1] + " "
-                    continue
-                lines.append(buf); buf = ""
-            desc = ""
-            for line in lines:
-                m = re.match(r"\s*LABEL\s+(.*)$", line)
-                if not m: continue
-                try: parts = shlex.split(m.group(1))
-                except Exception: parts = m.group(1).split()
-                for part in parts:
-                    if "=" not in part: continue
-                    k, v = part.split("=", 1)
-                    if k.strip() == "org.opencontainers.image.description":
-                        print(v.strip())
-                        sys.exit(0)
-            print("")
-            PY
-            )"
+            export PKG_README="${pkg}/README.md"
+            PY_HELPER="$(mktemp)"
+cat >"$PY_HELPER" <<'PY'
+import os, shlex, re, pathlib, sys
+df = pathlib.Path(os.environ.get("PKG_DOCKERFILE","Dockerfile"))
+rd = pathlib.Path(os.environ.get("PKG_README","README.md"))
+def from_dockerfile():
+    try:
+        text = df.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return ""
+    # join backslash-continued LABEL lines
+    lines, buf = [], ""
+    for raw in text.splitlines():
+        if not buf: buf = raw
+        else: buf += raw.lstrip()
+        if buf.rstrip().endswith("\\"):
+            buf = buf.rstrip()[:-1] + " "
+            continue
+        lines.append(buf); buf = ""
+    for line in lines:
+        m = re.match(r"\s*LABEL\s+(.*)$", line)
+        if not m: continue
+        try:
+            parts = shlex.split(m.group(1))
+        except Exception:
+            parts = m.group(1).split()
+        for part in parts:
+            if "=" not in part: continue
+            k, v = part.split("=", 1)
+            if k.strip() == "org.opencontainers.image.description":
+                return v.strip()
+    return ""
+def from_readme():
+    try:
+        txt = rd.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return ""
+    # first non-empty, non-heading-underline line; strip leading '# '
+    for line in txt.splitlines():
+        s = line.strip()
+        if not s: continue
+        if set(s) <= {"="} or set(s) <= {"-"}:  # skip underlines
+            continue
+        return s.lstrip("#").strip()
+    return ""
+desc = from_dockerfile().strip()
+if not desc:
+    desc = from_readme().strip()
+print(desc)
+PY
+            OCI_DESC="$(python3 "$PY_HELPER" || true)"
+            rm -f "$PY_HELPER" || true
             # Normalize + truncate for GH limit (512 chars)
-            OCI_DESC="${OCI_DESC//$'\n'/ }"; OCI_DESC="${OCI_DESC//$'\r'/ }"
+            OCI_DESC="${OCI_DESC//$'\r'/ }"; OCI_DESC="${OCI_DESC//$'\n'/ }"
             if (( ${#OCI_DESC} > 512 )); then OCI_DESC="${OCI_DESC:0:512}"; fi
-            # Escape double quotes for CLI label/annotation usage
+            # Escape quotes (safe for buildx flags)
             OCI_DESC_ESC="${OCI_DESC//\"/\\\"}"
             echo "Package description: ${OCI_DESC:-<none>}"
 
@@ -271,23 +291,23 @@ jobs:
             [[ -n "${BASE_USER}" ]] || BASE_USER="root"
             echo "Detected base runtime user: ${BASE_USER}"
 
-            # Wrapper Dockerfile (adds VNCP files; description is set via --label)
+            # Wrapper Dockerfile (adds VNCP files; description also applied as a LABEL)
             WRAP_DF="$(mktemp)"; trap 'rm -f "$WRAP_DF"' EXIT
-            {
-              echo '# syntax=docker/dockerfile:1.6'
-              echo 'ARG BASE_IMAGE'
-              echo 'ARG BASE_USER=root'
-              echo 'ARG VNCP_DIR=/usr/share/versanode'
-              echo 'FROM ${BASE_IMAGE}'
-              echo 'ARG VNCP_DIR'
-              echo 'ARG BASE_USER'
-              echo 'USER 0'
-              echo 'RUN install -d -m 0755 "${VNCP_DIR}"'
-              echo 'COPY --chmod=0644 vncp.config.yaml "${VNCP_DIR}/vncp.config.yaml"'
-              echo 'COPY --chmod=0644 README.md        "${VNCP_DIR}/README.md"'
-              echo 'RUN chmod 0644 "${VNCP_DIR}/vncp.config.yaml" "${VNCP_DIR}/README.md"'
-              echo 'USER ${BASE_USER}'
-            } > "$WRAP_DF"
+cat > "$WRAP_DF" <<'DF'
+# syntax=docker/dockerfile:1.6
+ARG BASE_IMAGE
+ARG BASE_USER=root
+ARG VNCP_DIR=/usr/share/versanode
+FROM ${BASE_IMAGE}
+ARG VNCP_DIR
+ARG BASE_USER
+USER 0
+RUN install -d -m 0755 "${VNCP_DIR}"
+COPY --chmod=0644 vncp.config.yaml "${VNCP_DIR}/vncp.config.yaml"
+COPY --chmod=0644 README.md        "${VNCP_DIR}/README.md"
+RUN chmod 0644 "${VNCP_DIR}/vncp.config.yaml" "${VNCP_DIR}/README.md"
+USER ${BASE_USER}
+DF
 
             # Common labels (+ description label here on the final image)
             LABELS=(
