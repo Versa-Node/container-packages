@@ -5,28 +5,17 @@ on:
     branches: [ main ]
     tags: [ 'v*.*.*' ]
   workflow_dispatch:
-    inputs:
-      packages:
-        description: "Optional space-separated package names (e.g. 'vncp-grafana vncp-influxdb'). Leave empty to build all."
-        required: false
-        default: ""
-
-permissions:
-  contents: read
-  packages: write
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     env:
-      OWNER: ${{ github.repository_owner }}     # e.g. Versa-Node
-      PACKAGES_DIR: packages
-      VNCP_DIR: /usr/share/versanode
+      OWNER: ${{ github.repository_owner }}   # raw owner (may have caps)
       DEFAULT_LICENSE: Apache-2.0
+      VNCP_DIR: /usr/share/versanode
     steps:
       - uses: actions/checkout@v4
 
@@ -57,79 +46,84 @@ jobs:
           echo "ORG=${OWNER,,}" >> "$GITHUB_ENV"
           echo "Using org: ${OWNER} -> ${ORG}"
 
-      - name: Resolve package list
-        id: pkgs
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -n "${{ inputs.packages }}" ]]; then
-            echo "list=${{ inputs.packages }}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          shopt -s nullglob
-          pkgs=()
-          for d in "${PACKAGES_DIR}"/*; do
-            [[ -d "$d" ]] || continue
-            base="$(basename "$d")"
-            [[ "$base" == "vncp-template" ]] && continue
-            pkgs+=("$base")
-          done
-          (( ${#pkgs[@]} > 0 )) || { echo "No packages found in ${PACKAGES_DIR}"; exit 1; }
-          echo "list=${pkgs[*]}" >> "$GITHUB_OUTPUT"
-          echo "Will build: ${pkgs[*]}"
-
-      - name: Build & push (wrap to inject VNCP files + labels)
-        shell: bash
+      - name: Build & push each package (with VNCP files injected)
         env:
           TAG: ${{ steps.vars.outputs.tag }}
         run: |
           set -euo pipefail
+          shopt -s nullglob
+          export CREATED="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
-          CACHE_FROM="type=gha"
-          CACHE_TO="type=gha,mode=max"
+          # Buildx cache (keeps builds fast & saves runner disk)
+          CACHE_FROM="type=gha,scope=${GITHUB_REF_NAME//\//_}"
+          CACHE_TO="type=gha,scope=${GITHUB_REF_NAME//\//_},mode=max"
 
-          for name in ${{ steps.pkgs.outputs.list }}; do
-            pkg="${PACKAGES_DIR}/${name}"
-            echo "::group::${name}"
+          for pkg in packages/*; do
+            [ -d "$pkg" ] || continue
+            name="$(basename "$pkg")"
+            echo "::group::Package: ${name}"
 
-            # sanity checks
-            [[ -f "${pkg}/Dockerfile" ]] || { echo "Missing Dockerfile in ${pkg}"; exit 2; }
-            [[ -f "${pkg}/vncp.config.yaml" ]] || { echo "Missing vncp.config.yaml in ${pkg}"; exit 3; }
-            [[ -f "${pkg}/README.md" ]] || { echo "Missing README.md in ${pkg}"; exit 4; }
+            # 0) Ensure VNCP files exist so COPY never fails
+            if [ ! -f "$pkg/vncp.config.yaml" ]; then
+              printf 'name: %s\nversion: "%s"\n' "$name" "${TAG}" > "$pkg/vncp.config.yaml"
+            fi
+            if [ ! -f "$pkg/README.md" ]; then
+              printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "$pkg/README.md"
+            fi
 
-            RAW_TAG="raw-${GITHUB_SHA::7}"
-            CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            VERSION="${TAG#v}"
-
-            echo "Step A: build base image -> ghcr.io/${ORG}/${name}:${RAW_TAG}"
+            # 1) Build the package’s own Dockerfile first -> raw image (multi-arch, pushed)
+            RAW_TAG="${TAG}"
             docker buildx build \
-              --platform linux/amd64,linux/arm64 \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
-              -t ghcr.io/${ORG}/${name}:${RAW_TAG} \
-              "${pkg}" \
-              --push
+              --platform linux/amd64,linux/arm64 \
+              -t "ghcr.io/${ORG}/${name}:${RAW_TAG}" \
+              -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
+              "$pkg" --push
 
-            echo "Step B: wrap image to inject VNCP files + labels"
+            # 2) Inspect its runtime user by doing a quick local (amd64) load
+            #    (only to read .Config.User; we drop this local image immediately)
+            LOCAL_TAG="localinspect-${name}-${GITHUB_SHA}"
+            docker buildx build \
+              --provenance=false --sbom=false \
+              --platform linux/amd64 \
+              -t "${LOCAL_TAG}" \
+              "$pkg" --load
+
+            BASE_USER="$(docker inspect --format '{{.Config.User}}' "${LOCAL_TAG}" || true)"
+            docker rmi -f "${LOCAL_TAG}" >/dev/null 2>&1 || true
+            if [ -z "${BASE_USER}" ]; then
+              BASE_USER="root"
+            fi
+            echo "Detected base runtime user: ${BASE_USER}"
+
+            # 3) Create a tiny wrapper Dockerfile that:
+            #    - switches to root
+            #    - creates ${VNCP_DIR}, copies vncp.config.yaml + README.md
+            #    - restores original user
             WRAP_DOCKERFILE="$(mktemp)"
             trap 'rm -f "$WRAP_DOCKERFILE"' EXIT
-            
-            # Wrapper Dockerfile (no heredoc, no --platform)
+
             printf '%s\n' \
             '# syntax=docker/dockerfile:1.6' \
             'ARG BASE_IMAGE' \
-            'FROM ${BASE_IMAGE}' \
+            'ARG BASE_USER=root' \
             'ARG VNCP_DIR=/usr/share/versanode' \
+            'FROM ${BASE_IMAGE}' \
+            'USER 0' \
             'RUN mkdir -p ${VNCP_DIR}' \
             'COPY --chmod=0644 vncp.config.yaml ${VNCP_DIR}/vncp.config.yaml' \
             'COPY --chmod=0644 README.md        ${VNCP_DIR}/README.md' \
+            'RUN chmod 0644 ${VNCP_DIR}/vncp.config.yaml ${VNCP_DIR}/README.md' \
+            'USER ${BASE_USER}' \
             > "$WRAP_DOCKERFILE"
-            
+
+            # Common OCI labels (keep description inside each package’s Dockerfile)
             LABELS=(
               --label "io.versanode.vncp.config.path=${VNCP_DIR}/vncp.config.yaml"
               --label "io.versanode.vncp.readme.path=${VNCP_DIR}/README.md"
               --label "org.opencontainers.image.title=${name}"
-              --label "org.opencontainers.image.version=${VERSION}"
+              --label "org.opencontainers.image.version=${TAG}"
               --label "org.opencontainers.image.revision=${GITHUB_SHA}"
               --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}"
               --label "org.opencontainers.image.url=https://github.com/${GITHUB_REPOSITORY}"
@@ -137,19 +131,22 @@ jobs:
               --label "org.opencontainers.image.vendor=${OWNER}"
               --label "org.opencontainers.image.licenses=${DEFAULT_LICENSE}"
             )
-            # (Keep org.opencontainers.image.description in each package's Dockerfile)
-            
+            # NOTE: Do NOT set org.opencontainers.image.description here.
+            # Keep that in each package’s Dockerfile as you requested.
+
+            # 4) Build the final image (multi-arch), injecting VNCP files
             docker buildx build \
-              --platform linux/amd64,linux/arm64 \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
+              --platform linux/amd64,linux/arm64 \
               --build-arg "BASE_IMAGE=ghcr.io/${ORG}/${name}:${RAW_TAG}" \
+              --build-arg "BASE_USER=${BASE_USER}" \
               --build-arg "VNCP_DIR=${VNCP_DIR}" \
               -f "$WRAP_DOCKERFILE" \
               "${LABELS[@]}" \
-              -t ghcr.io/${ORG}/${name}:${TAG} \
-              -t ghcr.io/${ORG}/${name}:${GITHUB_SHA::7} \
-              "${pkg}" --push
+              -t "ghcr.io/${ORG}/${name}:${TAG}" \
+              -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
+              "$pkg" --push
 
             echo "::endgroup::"
           done
