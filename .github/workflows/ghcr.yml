@@ -113,18 +113,18 @@ jobs:
             echo "Step B: wrap image to inject VNCP files + labels"
             WRAP_DOCKERFILE="$(mktemp)"
             trap 'rm -f "$WRAP_DOCKERFILE"' EXIT
-
-            # Write wrapper Dockerfile without heredocs
+            
+            # Wrapper Dockerfile (no heredoc, no --platform)
             printf '%s\n' \
             '# syntax=docker/dockerfile:1.6' \
             'ARG BASE_IMAGE' \
-            'ARG TARGETPLATFORM' \
-            'FROM --platform=$TARGETPLATFORM ${BASE_IMAGE}' \
+            'FROM ${BASE_IMAGE}' \
             'ARG VNCP_DIR=/usr/share/versanode' \
             'RUN mkdir -p ${VNCP_DIR}' \
             'COPY --chmod=0644 vncp.config.yaml ${VNCP_DIR}/vncp.config.yaml' \
-            'COPY --chmod=0644 README.md        ${VNCP_DIR}/README.md' > "$WRAP_DOCKERFILE"
-
+            'COPY --chmod=0644 README.md        ${VNCP_DIR}/README.md' \
+            > "$WRAP_DOCKERFILE"
+            
             LABELS=(
               --label "io.versanode.vncp.config.path=${VNCP_DIR}/vncp.config.yaml"
               --label "io.versanode.vncp.readme.path=${VNCP_DIR}/README.md"
@@ -137,9 +137,8 @@ jobs:
               --label "org.opencontainers.image.vendor=${OWNER}"
               --label "org.opencontainers.image.licenses=${DEFAULT_LICENSE}"
             )
-            # NOTE: we intentionally DO NOT set org.opencontainers.image.description here;
-            # keep that in each package's Dockerfile (package-specific).
-
+            # (Keep org.opencontainers.image.description in each package's Dockerfile)
+            
             docker buildx build \
               --platform linux/amd64,linux/arm64 \
               --provenance=false --sbom=false \
@@ -150,8 +149,7 @@ jobs:
               "${LABELS[@]}" \
               -t ghcr.io/${ORG}/${name}:${TAG} \
               -t ghcr.io/${ORG}/${name}:${GITHUB_SHA::7} \
-              "${pkg}" \
-              --push
+              "${pkg}" --push
 
             echo "::endgroup::"
           done
