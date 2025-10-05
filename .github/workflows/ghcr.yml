@@ -207,23 +207,8 @@ jobs:
               printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "${pkg}/README.md"
             fi
 
-            # Extract description from the package Dockerfile
-            DESC="$(
-              python3 - <<'PY' 2>/dev/null || true
-              import re,sys
-              p=sys.argv[1]
-              try: s=open(p,'r',encoding='utf-8',errors='ignore').read()
-              except: 
-                  print(""); sys.exit(0)
-              # handle LABEL k=v, LABEL "k"="v", multi-label lines
-              m=re.search(r'org\.opencontainers\.image\.description\s*=\s*(?P<q>["\']?)(?P<v>.+?)(?P=q)(?:\s|$)', s)
-              if m:
-                  print(m.group('v').strip())
-              else:
-                  print("")
-              PY
-              "${pkg}/Dockerfile"
-            )"
+            # Extract description from the package Dockerfile (robust, no heredoc)
+            DESC="$(python3 -c "import re,sys; s=open(sys.argv[1],'r',encoding='utf-8',errors='ignore').read(); m=re.search(r'org\\.opencontainers\\.image\\.description\\s*=\\s*(?:\\\"([^\\\"]*)\\\"|\\'([^\\']*)\\'|([^\\n\\r#]+))', s); print((m.group(1) or m.group(2) or m.group(3) or '').strip())" "${pkg}/Dockerfile" 2>/dev/null || true)"
 
             # Build BASE multi-arch (package Dockerfile)
             RAW_TAG="${TAG}"
@@ -248,7 +233,7 @@ jobs:
             [[ -z "${BASE_USER}" ]] && BASE_USER="root"
             echo "Detected base runtime user: ${BASE_USER}"
 
-            # Wrapper Dockerfile (adds VNCP files + labels), re-apply description
+            # Wrapper Dockerfile (adds VNCP files + labels)
             WRAP_DOCKERFILE="$(mktemp)"
             {
               echo '# syntax=docker/dockerfile:1.6'
@@ -278,7 +263,6 @@ jobs:
               --label "org.opencontainers.image.vendor=${OWNER}"
               --label "org.opencontainers.image.licenses=${DEFAULT_LICENSE}"
             )
-
             if [[ -n "${DESC}" ]]; then
               LABELS+=( --label "org.opencontainers.image.description=${DESC}" )
             fi
@@ -297,17 +281,17 @@ jobs:
               -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
               "${pkg}" --push
 
-            # Annotate the multi-arch index with description (if we have one)
+            # Annotate multi-arch index with description (best-effort)
             if [[ -n "${DESC}" ]]; then
               docker buildx imagetools create \
                 --tag "ghcr.io/${ORG}/${name}:${TAG}" \
                 --annotation "org.opencontainers.image.description=${DESC}" \
-                "ghcr.io/${ORG}/${name}:${TAG}"
+                "ghcr.io/${ORG}/${name}:${TAG}" || true
 
               docker buildx imagetools create \
                 --tag "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
                 --annotation "org.opencontainers.image.description=${DESC}" \
-                "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}"
+                "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" || true
             fi
 
             BUILT_LIST+=("${name}")
