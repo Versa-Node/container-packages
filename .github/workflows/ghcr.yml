@@ -29,13 +29,10 @@
 #    - branch build => tag=latest
 #    - also push short-SHA tag
 #
-# 5) Visibility:
-#    - Make the just-built packages PUBLIC (best effort)
-#
-# 6) Caching:
+# 5) Caching:
 #    - Buildx cache (gha scope per branch/tag)
 #
-# 7) Owner/org:
+# 6) Owner/org:
 #    - ${{ github.repository_owner }} (lowercased) for ghcr.io/<org>/<name>
 # ------------------------------------------------------------------------------
 
@@ -213,18 +210,18 @@ jobs:
             # Extract description from the package Dockerfile
             DESC="$(
               python3 - <<'PY' 2>/dev/null || true
-import re,sys
-p=sys.argv[1]
-try: s=open(p,'r',encoding='utf-8',errors='ignore').read()
-except: 
-    print(""); sys.exit(0)
-# handle LABEL k=v, LABEL "k"="v", multi-label lines
-m=re.search(r'org\.opencontainers\.image\.description\s*=\s*(?P<q>["\']?)(?P<v>.+?)(?P=q)(?:\s|$)', s)
-if m:
-    print(m.group('v').strip())
-else:
-    print("")
-PY
+              import re,sys
+              p=sys.argv[1]
+              try: s=open(p,'r',encoding='utf-8',errors='ignore').read()
+              except: 
+                  print(""); sys.exit(0)
+              # handle LABEL k=v, LABEL "k"="v", multi-label lines
+              m=re.search(r'org\.opencontainers\.image\.description\s*=\s*(?P<q>["\']?)(?P<v>.+?)(?P=q)(?:\s|$)', s)
+              if m:
+                  print(m.group('v').strip())
+              else:
+                  print("")
+              PY
               "${pkg}/Dockerfile"
             )"
 
@@ -319,24 +316,3 @@ PY
           done
 
           printf 'BUILT_LIST=%s\n' "${BUILT_LIST[*]}" >> "$GITHUB_ENV"
-
-      - name: Make newly built packages public (best effort)
-        if: env.BUILT_LIST != ''
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          if ! command -v gh >/dev/null 2>&1; then
-            echo "gh CLI not found; skipping visibility update."
-            exit 0
-          fi
-          for name in ${BUILT_LIST}; do
-            echo "Setting visibility PUBLIC for: ${name}"
-            gh api -X PUT \
-              -H "Accept: application/vnd.github+json" \
-              "/orgs/${OWNER}/packages/container/${name}/visibility" \
-              -f visibility=public || {
-                echo "Warn: failed to set public for ${name} (insufficient permission or already public)."
-              }
-          done
