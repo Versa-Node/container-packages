@@ -1,6 +1,7 @@
 services:
   vncp-postgresql:
     image: ghcr.io/versa-node/vncp-postgresql:latest
+    platform: linux/arm64
     container_name: vncp-postgresql
     restart: unless-stopped
     env_file: ./.env
