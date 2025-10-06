@@ -1,6 +1,7 @@
 services:
   vncp-influxdb:
     image: ghcr.io/versa-node/vncp-influxdb:latest
+    platform: linux/arm64
     container_name: vncp-influxdb
     restart: unless-stopped
     env_file: ./.env
