@@ -1,6 +1,7 @@
 services:
   vncp-mosquitto:
     image: ghcr.io/versa-node/vncp-mosquitto:latest
+    platform: linux/arm64
     container_name: vncp-mosquitto
     restart: unless-stopped
     env_file: ./.env
