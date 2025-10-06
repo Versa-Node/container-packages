@@ -1,6 +1,7 @@
 services:
   vncp-zigbee2mqtt:
     image: ghcr.io/versa-node/vncp-zigbee2mqtt:latest
+    platform: linux/arm64
     container_name: vncp-zigbee2mqtt
     restart: unless-stopped
     env_file: ./.env
