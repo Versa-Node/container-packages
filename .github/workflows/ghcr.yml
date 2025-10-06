@@ -1,302 +1,247 @@
 # ------------------------------------------------------------------------------
-# Publish packages to GHCR (versa-node/*)
+# Build & Release (pi-gen) — MANUAL
 #
-# HOW THIS WORKS
-# 1) Triggers:
-#    - push to main (if packages/** or common CI files changed)
-#    - push tags v*.*.* (build ALL packages)
-#    - manual (workflow_dispatch) with:
-#        changed_only: build only changed (default true)
-#        packages:     override with a list
-#
-# 2) Change detection:
-#    - Diff current commit vs previous -> which packages/<name> changed
-#    - If shared scripts/workflows changed -> build ALL
-#
-# 3) Build strategy (per package):
-#    - Build the package’s Dockerfile for linux/amd64 + linux/arm64 (BASE image)
-#    - Detect the BASE image runtime user (local amd64 load)
-#    - Build a tiny WRAPPER image FROM that BASE which:
-#       * Creates /usr/share/versanode
-#       * Copies vncp.config.yaml and README.md
-#       * Applies common labels
-#       * **Re-applies** org.opencontainers.image.description (from the package Dockerfile)
-#    - Push the WRAPPER as the final tag
-#    - **Annotate the multi-arch index** with org.opencontainers.image.description
-#
-# 4) Tags:
-#    - tag build => tag=${GITHUB_REF_NAME} (e.g. v1.2.3)
-#    - branch build => tag=latest
-#    - also push short-SHA tag
-#
-# 5) Caching:
-#    - Buildx cache (gha scope per branch/tag)
-#
-# 6) Owner/org:
-#    - ${{ github.repository_owner }} (lowercased) for ghcr.io/<org>/<name>
+# - Verifies export-image tools exist INSIDE the pi-gen container (bc, pigz, xxd,
+#   bmap-tools, zerofree) before the long build.
+# - Writes a robust config.effective to avoid empty vars during sizing.
+# - Enables PI_GEN_DEBUG to surface computed sizes/paths.
 # ------------------------------------------------------------------------------
 
-name: Publish packages to GHCR
+name: Build & Release (pi-gen)
 
 on:
-  push:
-    branches: [ main ]
-    tags:     [ 'v*.*.*' ]
-    paths:
-      - 'packages/**'
-      - '.github/workflows/**'
-      - 'scripts/**'
-      - 'common/**'
   workflow_dispatch:
     inputs:
-      changed_only:
-        description: "Build ONLY packages that changed"
+      ref:
+        description: "Git ref to build (branch or tag)"
+        default: "main"
+        required: true
+      release:
+        description: "Publish GitHub Release?"
         type: boolean
         default: true
-      packages:
-        description: "Comma/space separated package names (overrides detection)"
-        required: false
+      upload_artifacts:
+        description: "Upload build artifacts?"
+        type: boolean
+        default: true
+      arch:
+        description: "Architecture (arm64 or armhf)"
+        default: "arm64"
+        required: true
+      release_codename:
+        description: "Raspberry Pi OS release (bookworm or trixie)"
+        default: "trixie"
+        required: true
+      variant:
+        description: "Image size (lite|normal|full)"
+        default: "lite"
+        required: true
 
 concurrency:
-  group: publish-${{ github.ref }}-${{ github.workflow }}
+  group: pigen-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
     permissions:
-      contents: read
-      packages: write
-    env:
-      OWNER: ${{ github.repository_owner }}
-      DEFAULT_LICENSE: Apache-2.0
-      VNCP_DIR: /usr/share/versanode
+      contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Maximize disk space (remove SDKs, caches, Docker images)
+        uses: jlumbroso/free-disk-space@v1.3.1
         with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Extra prune & show free space
+        run: |
+          docker system prune -af || true
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet /opt/hostedtoolcache || true
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          df -h
+
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: recursive
           fetch-depth: 0
 
-      - name: Set up QEMU
+      - name: Set up QEMU (enable binfmt)
         uses: docker/setup-qemu-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compute tag
-        id: vars
-        run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Lowercase owner for image tags
-        run: |
-          echo "ORG=${OWNER,,}" >> "$GITHUB_ENV"
-          echo "Using org: ${OWNER} -> ${ORG}"
-
-      - name: Determine packages to build
-        id: changed
-        env:
-          INPUT_CHANGED_ONLY: ${{ inputs.changed_only }}
-          INPUT_PACKAGES:     ${{ inputs.packages }}
+      - name: Install host dependencies
         run: |
           set -euo pipefail
-          shopt -s nullglob
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-user-static binfmt-support \
+            quilt debootstrap libarchive-tools xz-utils kpartx dosfstools zip rsync \
+            coreutils curl git ca-certificates gpg parted e2fsprogs
 
-          all_pkgs() { (cd packages && ls -1d */ 2>/dev/null | sed 's:/$::'); }
-
-          FORCE_ALL=0
-          PKGS=()
-
-          # Tag build => all
-          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
-            FORCE_ALL=1
-          fi
-
-          # Manual override
-          if [[ -n "${INPUT_PACKAGES:-}" ]]; then
-            mapfile -t PKGS < <(printf '%s\n' "${INPUT_PACKAGES//,/ }" | tr -s ' ,\n' '\n' | sed '/^$/d')
-            echo "Manual selection: ${PKGS[*]}"
-          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${INPUT_CHANGED_ONLY:-true}" == "false" ]]; then
-            FORCE_ALL=1
-          fi
-
-          if [[ ${#PKGS[@]} -eq 0 && $FORCE_ALL -eq 0 ]]; then
-            BASE="${{ github.event.before }}"
-            HEAD="${{ github.sha }}"
-            if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
-              BASE="$(git rev-parse HEAD^ || echo '')"
-            fi
-            echo "Diff range: $BASE..$HEAD"
-            CHANGED="$(git diff --name-only "$BASE" "$HEAD" -- \
-              'packages/**' '.github/workflows/**' 'scripts/**' 'common/**' || true)"
-
-            # Any shared CI/scripting change => build all
-            if grep -qE '^(\.github/workflows/|scripts/|common/)' <<< "$CHANGED"; then
-              FORCE_ALL=1
-            else
-              mapfile -t PKGS < <(awk -F/ '/^packages\//{print $2}' <<< "$CHANGED" | sort -u)
-            fi
-          fi
-
-          if [[ $FORCE_ALL -eq 1 ]]; then
-            mapfile -t PKGS < <(all_pkgs)
-          fi
-
-          FILTERED=()
-          for p in "${PKGS[@]:-}"; do
-            [[ -d "packages/$p" ]] && FILTERED+=("$p")
-          done
-          PKGS=("${FILTERED[@]}")
-
-          if [[ ${#PKGS[@]} -eq 0 ]]; then
-            echo "No package changes detected."
-            echo "PKG_LIST=" >> "$GITHUB_ENV"
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Will build: ${PKGS[*]}"
-            printf 'PKG_LIST=%s\n' "${PKGS[*]}" >> "$GITHUB_ENV"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build & push (with VNCP files, labels; ARM64 single-arch)
-        if: steps.changed.outputs.changed == 'true' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
-        env:
-          TAG: ${{ steps.vars.outputs.tag }}
+      - name: Ensure pi-gen exists (clone if not present)
+        shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          export CREATED="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-
-          CACHE_KEY="${GITHUB_REF_NAME//\//_}"
-          CACHE_FROM="type=gha,scope=${CACHE_KEY}"
-          CACHE_TO="type=gha,scope=${CACHE_KEY},mode=max"
-
-          if [[ -z "${PKG_LIST:-}" ]]; then
-            echo "Nothing to build."
+          if [ -d "pi-gen" ]; then
+            echo "Found existing ./pi-gen"
             exit 0
           fi
+          BRANCH="master"
+          if [ "${{ inputs.arch }}" = "arm64" ]; then
+            BRANCH="arm64"
+          fi
+          echo "Cloning RPi-Distro/pi-gen branch: ${BRANCH}"
+          git clone --depth 1 --branch "${BRANCH}" https://github.com/RPi-Distro/pi-gen.git
 
-          BUILT_LIST=()
-
-          for name in ${PKG_LIST}; do
-            pkg="packages/${name}"
-            echo "::group::Package: ${name}"
-            if [[ ! -f "${pkg}/Dockerfile" ]]; then
-              echo "No Dockerfile in ${pkg}, skipping."
-              echo "::endgroup::"
-              continue
-            fi
-
-            # Ensure VNCP files so COPY never fails
-            if [[ ! -f "${pkg}/vncp.config.yaml" ]]; then
-              printf 'name: %s\nversion: "%s"\n' "$name" "${TAG}" > "${pkg}/vncp.config.yaml"
-            fi
-            if [[ ! -f "${pkg}/README.md" ]]; then
-              printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "${pkg}/README.md"
-            fi
-
-            # Extract description from the package Dockerfile
-            DESC="$(
-              python3 - "${pkg}/Dockerfile" 2>/dev/null <<'PY'
-            import re,sys
-            s=open(sys.argv[1],'r',encoding='utf-8',errors='ignore').read()
-            m=re.search(r'org\.opencontainers\.image\.description\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\n\r#]+))', s)
-            print((m.group(1) or m.group(2) or m.group(3) or '').strip() if m else '')
-            PY
-            )" || true
-            
-            # Detect runtime user by parsing the last USER instruction (fallback root)
-            BASE_USER="$(
-              python3 - "${pkg}/Dockerfile" 2>/dev/null <<'PY'
-            import re,sys
-            user='root'
-            with open(sys.argv[1],'r',encoding='utf-8',errors='ignore') as f:
-                txt=f.read()
-            # find all USER lines not commented out
-            candidates=[m.group(1).strip() for m in re.finditer(r'(?mi)^(?!\s*#)\s*USER\s+(.+?)\s*$', txt)]
-            if candidates:
-                user=candidates[-1]
-            print(user)
-            PY
-            )" || true
-            [[ -z "${BASE_USER}" ]] && BASE_USER="root"
-            echo "Detected runtime user (from Dockerfile): ${BASE_USER}"
-
-
-            # Build BASE single-arch (ARM64)
-            RAW_TAG="${TAG}"
-            docker buildx build \
-              --provenance=false --sbom=false \
-              --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
-              --platform linux/arm64 \
-              -t "ghcr.io/${ORG}/${name}:${RAW_TAG}" \
-              -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
-              "${pkg}" --push
-
-            # Wrapper Dockerfile (adds VNCP files + labels)
-            WRAP_DOCKERFILE="$(mktemp)"
+      # Ensure export-image toolchain is present inside the container image we will build
+      - name: Harden pi-gen Dockerfile with required tools (bc, zerofree, etc.)
+        working-directory: pi-gen
+        shell: bash
+        run: |
+          set -euo pipefail
+          LINE='RUN apt-get update && apt-get install -y --no-install-recommends bc pigz xxd bmap-tools zerofree && rm -rf /var/lib/apt/lists/*'
+          if ! grep -qE 'bc.*pigz.*xxd.*bmap-tools.*zerofree' Dockerfile; then
             {
-              echo '# syntax=docker/dockerfile:1.6'
-              echo 'ARG BASE_IMAGE'
-              echo 'ARG BASE_USER=root'
-              echo 'ARG VNCP_DIR=/usr/share/versanode'
-              echo 'FROM ${BASE_IMAGE}'
-              echo 'ARG VNCP_DIR'
-              echo 'ARG BASE_USER'
-              echo 'USER 0'
-              echo 'RUN install -d -m 0755 "${VNCP_DIR}"'
-              echo 'COPY --chmod=0644 vncp.config.yaml "${VNCP_DIR}/vncp.config.yaml"'
-              echo 'COPY --chmod=0644 README.md        "${VNCP_DIR}/README.md"'
-              echo 'RUN chmod 0644 "${VNCP_DIR}/vncp.config.yaml" "${VNCP_DIR}/README.md"'
-              echo 'USER ${BASE_USER}'
-            } > "$WRAP_DOCKERFILE"
+              echo ""
+              echo "# Ensured by CI to satisfy export-image sizing & compression tools"
+              echo "${LINE}"
+            } >> Dockerfile
+          fi
+          echo "Final Dockerfile tail:"
+          tail -n 30 Dockerfile
 
-            LABELS=(
-              --label "io.versanode.vncp.config.path=${VNCP_DIR}/vncp.config.yaml"
-              --label "io.versanode.vncp.readme.path=${VNCP_DIR}/README.md"
-              --label "org.opencontainers.image.title=${name}"
-              --label "org.opencontainers.image.version=${TAG}"
-              --label "org.opencontainers.image.revision=${GITHUB_SHA}"
-              --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}"
-              --label "org.opencontainers.image.url=https://github.com/${GITHUB_REPOSITORY}"
-              --label "org.opencontainers.image.created=${CREATED}"
-              --label "org.opencontainers.image.vendor=${OWNER}"
-              --label "org.opencontainers.image.licenses=${DEFAULT_LICENSE}"
-            )
-            if [[ -n "${DESC}" ]]; then
-              LABELS+=( --label "org.opencontainers.image.description=${DESC}" )
-            fi
+      - name: Build pi-gen helper image and verify required tools
+        working-directory: pi-gen
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMG_TAG=pigen-helper:local
+          docker build -t "${IMG_TAG}" .
+          docker run --rm "${IMG_TAG}" sh -lc '
+            set -e
+            command -v bc >/dev/null && bc --version | head -1
+            command -v pigz >/dev/null && pigz --version | head -1
+            command -v xxd >/dev/null && xxd -v || true
+            command -v bmaptool >/dev/null && bmaptool --version | head -1
+            command -v zerofree >/dev/null && zerofree -V | head -1
+          '
 
-            # Build WRAPPER single-arch (ARM64 final)
-            docker buildx build \
-              --provenance=false --sbom=false \
-              --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
-              --platform linux/arm64 \
-              --build-arg "BASE_IMAGE=ghcr.io/${ORG}/${name}:${RAW_TAG}" \
-              --build-arg "BASE_USER=${BASE_USER}" \
-              --build-arg "VNCP_DIR=${VNCP_DIR}" \
-              -f "$WRAP_DOCKERFILE" \
-              "${LABELS[@]}" \
-              -t "ghcr.io/${ORG}/${name}:${TAG}" \
-              -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
-              "${pkg}" --push
+      - name: Prepare effective config (apply inputs)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -f config config.effective 2>/dev/null || : > config.effective
 
-            BUILT_LIST+=("${name}")
-            echo "::endgroup::"
-            rm -f "$WRAP_DOCKERFILE"
-          done
+          # Baseline defaults
+          grep -q '^ARCH=' config.effective || echo 'ARCH=arm64' >> config.effective
+          grep -q '^RELEASE=' config.effective || echo 'RELEASE=bookworm' >> config.effective
+          grep -q '^ENABLE_SSH=' config.effective || echo 'ENABLE_SSH=1' >> config.effective
+          grep -q '^FIRST_USER_NAME=' config.effective || echo 'FIRST_USER_NAME=pi' >> config.effective
+          grep -q '^FIRST_USER_PASS=' config.effective || echo 'FIRST_USER_PASS=raspberry' >> config.effective
+          grep -q '^DISABLE_FIRST_BOOT_USER_RENAME=' config.effective || echo 'DISABLE_FIRST_BOOT_USER_RENAME=1' >> config.effective
+          grep -q '^DEBIAN_FRONTEND=' config.effective || echo 'DEBIAN_FRONTEND=noninteractive' >> config.effective
+          grep -q '^APT_LISTCHANGES_FRONTEND=' config.effective || echo 'APT_LISTCHANGES_FRONTEND=none' >> config.effective
 
-          printf 'BUILT_LIST=%s\n' "${BUILT_LIST[*]}" >> "$GITHUB_ENV"
+          # Always produce .img.xz and disable zip variant paths that can confuse older logic
+          sed -i '/^DEPLOY_COMPRESSION=/d' config.effective
+          echo 'DEPLOY_COMPRESSION=xz' >> config.effective
+          sed -i '/^COMPRESSION_LEVEL=/d' config.effective
+          echo 'COMPRESSION_LEVEL=6' >> config.effective
+          sed -i '/^ZIP_COMPRESSION_LEVEL=/d' config.effective
+          echo 'ZIP_COMPRESSION_LEVEL=6' >> config.effective
+          sed -i '/^DEPLOY_ZIP=/d' config.effective
+          echo 'DEPLOY_ZIP=0' >> config.effective
 
+          # Cross-arch
+          sed -i '/^USE_QEMU=/d' config.effective
+          echo 'USE_QEMU=1' >> config.effective
+
+          # Stable image name avoids empty-var path bugs in export-image
+          sed -i '/^IMG_NAME=/d' config.effective
+          echo 'IMG_NAME=versanode-os' >> config.effective
+
+          # Sizing guards (prevent zero math)
+          sed -i '/^DEPLOY_MINIMIZEFS=/d' config.effective
+          echo 'DEPLOY_MINIMIZEFS=0' >> config.effective
+          sed -i '/^ROOT_MARGIN=/d' config.effective
+          echo 'ROOT_MARGIN=256' >> config.effective
+          sed -i '/^TARGET_IMAGE_SIZE=/d' config.effective
+          # Default for lite; bumped later for normal/full
+          echo 'TARGET_IMAGE_SIZE=4096' >> config.effective
+
+          # Apply inputs
+          sed -i "s/^ARCH=.*/ARCH=${{ inputs.arch }}/" config.effective
+          sed -i "s/^RELEASE=.*/RELEASE=${{ inputs.release_codename }}/" config.effective
+
+          # Variant -> stages + size
+          case "${{ inputs.variant }}" in
+            lite)
+              STAGES="stage0 stage1 stage2 export-image"
+              SIZE=4096
+              ;;
+            normal)
+              STAGES="stage0 stage1 stage2 stage3 stage4 export-image"
+              SIZE=6144
+              ;;
+            full)
+              STAGES="stage0 stage1 stage2 stage3 stage4 stage5 export-image"
+              SIZE=8192
+              ;;
+            *)
+              echo "Unknown variant: ${{ inputs.variant }}"; exit 1
+              ;;
+          esac
+          sed -i '/^STAGE_LIST=/d' config.effective
+          echo "STAGE_LIST=\"${STAGES}\"" >> config.effective
+          sed -i "s/^TARGET_IMAGE_SIZE=.*/TARGET_IMAGE_SIZE=${SIZE}/" config.effective
+
+          echo "---- EFFECTIVE CONFIG ----"
+          cat config.effective
+
+      - name: Build image with pi-gen (Docker)
+        working-directory: pi-gen
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PI_GEN_DEBUG=1
+          sudo CLEAN=1 ./build-docker.sh -c ../config.effective
+
+      - name: Show deploy contents
+        shell: bash
+        run: |
+          echo "Contents of pi-gen/deploy:"
+          ls -lah pi-gen/deploy || true
+
+      - name: Remove work dir and show free space
+        shell: bash
+        run: |
+          du -sh pi-gen/work || true
+          sudo rm -rf pi-gen/work || true
+          df -h
+
+      - name: Upload artifacts (.img.xz)
+        if: ${{ inputs.upload_artifacts }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: versanode-os-${{ inputs.release_codename }}-${{ inputs.arch }}-${{ inputs.variant }}
+          path: pi-gen/deploy/*.img.xz
+          if-no-files-found: error
+          compression-level: 9
+
+      - name: Create GitHub Release (attach .img.xz)
+        if: ${{ inputs.release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "versanode-os ${{ inputs.release_codename }} (${{ inputs.arch }}) — ${{ inputs.variant }}"
+          draft: false
+          prerelease: false
+          tag_name: "build-${{ github.run_number }}"
+          files: pi-gen/deploy/*.img.xz
