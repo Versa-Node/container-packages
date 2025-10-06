@@ -1,0 +1,27 @@
+name: vncp-n8n
+description:
+arch: [linux/arm64]
+maintainers:
+  - name: Community
+    github: versanode-community
+upstream:
+  image: docker.io/n8nio/n8n:1.115.0-arm64
+ports:
+  - "5678"
+volumes:
+  - "/home/node/.n8n"
+env:
+  - N8N_HOST
+  - N8N_PORT
+  - N8N_PROTOCOL
+  - WEBHOOK_URL
+  - GENERIC_TIMEZONE
+  - N8N_BASIC_AUTH_ACTIVE
+  - N8N_BASIC_AUTH_USER
+  - N8N_BASIC_AUTH_PASSWORD
+  - N8N_ENCRYPTION_KEY
+healthcheck:
+  test: ["CMD", "bash", "-lc", "nc -z localhost 5678"]
+  interval: 30s
+  timeout: 5s
+  retries: 5
