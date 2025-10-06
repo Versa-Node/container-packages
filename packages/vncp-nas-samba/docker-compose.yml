@@ -1,6 +1,7 @@
 services:
   vncp-nas-samba:
     image: ghcr.io/versa-node/vncp-nas-samba:latest
+    platform: linux/arm64
     container_name: vncp-nas-samba
     restart: unless-stopped
     env_file: ./.env
