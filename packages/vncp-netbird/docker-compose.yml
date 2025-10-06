@@ -1,6 +1,7 @@
 services:
   vncp-netbird:
     image: ghcr.io/versa-node/vncp-netbird:latest
+    platform: linux/arm64
     container_name: vncp-netbird
     restart: unless-stopped
     env_file: ./.env
