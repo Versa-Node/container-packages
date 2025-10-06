@@ -1,6 +1,7 @@
 services:
   vncp-apn:
     image: ghcr.io/versa-node/vncp-apn:latest
+    platform: linux/arm64
     container_name: vncp-apn
     restart: unless-stopped
     env_file: ./.env
