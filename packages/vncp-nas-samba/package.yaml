@@ -1,6 +1,6 @@
 name: vncp-nas-samba
 description: Simple Samba NAS container for a single share
-arch: [linux/arm64, linux/amd64]
+arch: [linux/arm64]
 maintainers:
   - name: Community
     github: versanode-community

@@ -1,6 +1,6 @@
 name: vncp-pycaret-notebook
 description: JupyterLab + PyCaret notebook environment
-arch: [linux/arm64, linux/amd64]
+arch: [linux/arm64]
 maintainers:
   - name: Community
     github: versanode-community

@@ -1,6 +1,6 @@
 name: vncp-timescaledb
 description: TimescaleDB (PostgreSQL 16) time-series database
-arch: [linux/arm64, linux/amd64]
+arch: [linux/arm64]
 maintainers:
   - name: Community
     github: versanode-community

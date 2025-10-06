@@ -1,6 +1,6 @@
 name: vncp-openems
 description: OpenEMS Edge (energy management)
-arch: [linux/arm64, linux/amd64]
+arch: [linux/arm64]
 maintainers:
   - name: Community
     github: versanode-community
