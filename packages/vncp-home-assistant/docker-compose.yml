@@ -1,6 +1,7 @@
 services:
   vncp-home-assistant:
     image: ghcr.io/versa-node/vncp-home-assistant:latest
+    platform: linux/arm64
     container_name: vncp-home-assistant
     restart: unless-stopped
     env_file: ./.env
