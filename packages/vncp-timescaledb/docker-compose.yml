@@ -1,6 +1,7 @@
 services:
   vncp-timescaledb:
     image: ghcr.io/versa-node/vncp-timescaledb:latest
+    platform: linux/arm64
     container_name: vncp-timescaledb
     restart: unless-stopped
     env_file: ./.env
