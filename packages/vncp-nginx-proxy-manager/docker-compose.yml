@@ -1,6 +1,7 @@
 services:
   vncp-nginx-proxy-manager:
     image: ghcr.io/versa-node/vncp-nginx-proxy-manager:latest
+    platform: linux/arm64
     container_name: vncp-nginx-proxy-manager
     restart: unless-stopped
     env_file: ./.env
