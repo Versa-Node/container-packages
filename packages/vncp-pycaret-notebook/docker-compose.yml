@@ -1,6 +1,7 @@
 services:
   vncp-pycaret-notebook:
     image: ghcr.io/versa-node/vncp-pycaret-notebook:latest
+    platform: linux/arm64
     container_name: vncp-pycaret-notebook
     restart: unless-stopped
     env_file: ./.env
