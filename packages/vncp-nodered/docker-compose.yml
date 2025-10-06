@@ -1,6 +1,7 @@
 services:
   vncp-nodered:
     image: ghcr.io/versa-node/vncp-nodered:latest
+    platform: linux/arm64
     container_name: vncp-nodered
     restart: unless-stopped
     env_file: ./.env
