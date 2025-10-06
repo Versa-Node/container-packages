@@ -170,7 +170,7 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build & push (with VNCP files, labels, and index annotation)
+            - name: Build & push (with VNCP files, labels; ARM64 single-arch)
         if: steps.changed.outputs.changed == 'true' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         env:
           TAG: ${{ steps.vars.outputs.tag }}
@@ -207,31 +207,40 @@ jobs:
               printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "${pkg}/README.md"
             fi
 
-            # Extract description from the package Dockerfile (robust, no heredoc)
-            DESC="$(python3 -c "import re,sys; s=open(sys.argv[1],'r',encoding='utf-8',errors='ignore').read(); m=re.search(r'org\\.opencontainers\\.image\\.description\\s*=\\s*(?:\\\"([^\\\"]*)\\\"|\\'([^\\']*)\\'|([^\\n\\r#]+))', s); print((m.group(1) or m.group(2) or m.group(3) or '').strip())" "${pkg}/Dockerfile" 2>/dev/null || true)"
+            # Extract description from the package Dockerfile
+            DESC="$(python3 - <<'PY'
+            import re,sys
+            s=open(sys.argv[1],'r',encoding='utf-8',errors='ignore').read()
+            m=re.search(r'org\\.opencontainers\\.image\\.description\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\n\\r#]+))', s)
+            print((m.group(1) or m.group(2) or m.group(3) or '').strip() if m else '')
+            PY
+            "${pkg}/Dockerfile" 2>/dev/null || true)"
 
-            # Build BASE multi-arch (package Dockerfile)
+            # Detect runtime user by parsing the last USER instruction (fallback root)
+            BASE_USER="$(python3 - <<'PY'
+            import re,sys
+            user='root'
+            with open(sys.argv[1],'r',encoding='utf-8',errors='ignore') as f:
+                txt=f.read()
+            # find all USER lines not commented out
+            candidates=[m.group(1).strip() for m in re.finditer(r'(?mi)^(?!\\s*#)\\s*USER\\s+(.+?)\\s*$', txt)]
+            if candidates:
+                user=candidates[-1]
+            print(user)
+PY
+            "${pkg}/Dockerfile" 2>/dev/null || echo root)"
+            [[ -z "${BASE_USER}" ]] && BASE_USER="root"
+            echo "Detected runtime user (from Dockerfile): ${BASE_USER}"
+
+            # Build BASE single-arch (ARM64)
             RAW_TAG="${TAG}"
             docker buildx build \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
-              --platform linux/amd64,linux/arm64 \
+              --platform linux/arm64 \
               -t "ghcr.io/${ORG}/${name}:${RAW_TAG}" \
               -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
               "${pkg}" --push
-
-            # Inspect runtime user via local amd64 load
-            LOCAL_TAG="localinspect-${name}-${GITHUB_SHA}"
-            docker buildx build \
-              --provenance=false --sbom=false \
-              --platform linux/amd64 \
-              -t "${LOCAL_TAG}" \
-              "${pkg}" --load
-
-            BASE_USER="$(docker inspect --format '{{.Config.User}}' "${LOCAL_TAG}" || true)"
-            docker rmi -f "${LOCAL_TAG}" >/dev/null 2>&1 || true
-            [[ -z "${BASE_USER}" ]] && BASE_USER="root"
-            echo "Detected base runtime user: ${BASE_USER}"
 
             # Wrapper Dockerfile (adds VNCP files + labels)
             WRAP_DOCKERFILE="$(mktemp)"
@@ -267,11 +276,11 @@ jobs:
               LABELS+=( --label "org.opencontainers.image.description=${DESC}" )
             fi
 
-            # Build WRAPPER multi-arch (final)
+            # Build WRAPPER single-arch (ARM64 final)
             docker buildx build \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
-              --platform linux/amd64,linux/arm64 \
+              --platform linux/arm64 \
               --build-arg "BASE_IMAGE=ghcr.io/${ORG}/${name}:${RAW_TAG}" \
               --build-arg "BASE_USER=${BASE_USER}" \
               --build-arg "VNCP_DIR=${VNCP_DIR}" \
@@ -281,22 +290,10 @@ jobs:
               -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
               "${pkg}" --push
 
-            # Annotate multi-arch index with description (best-effort)
-            if [[ -n "${DESC}" ]]; then
-              docker buildx imagetools create \
-                --tag "ghcr.io/${ORG}/${name}:${TAG}" \
-                --annotation "org.opencontainers.image.description=${DESC}" \
-                "ghcr.io/${ORG}/${name}:${TAG}" || true
-
-              docker buildx imagetools create \
-                --tag "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
-                --annotation "org.opencontainers.image.description=${DESC}" \
-                "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" || true
-            fi
-
             BUILT_LIST+=("${name}")
             echo "::endgroup::"
             rm -f "$WRAP_DOCKERFILE"
           done
 
           printf 'BUILT_LIST=%s\n' "${BUILT_LIST[*]}" >> "$GITHUB_ENV"
+
