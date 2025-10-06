@@ -1,0 +1,64 @@
+version: 1
+metadata:
+  id: vncp-n8n
+  name: n8n
+  summary: Auto-generated package config (ARM64 only)
+  website: https://github.com/Versa-Node/container-packages/tree/main/packages/vncp-n8n
+parameters:
+  - key: N8N_PORT
+    label: n8n Port
+    type: string
+    description: External port mapping for the n8n UI/API
+    default: "5678"
+  - key: N8N_HOST
+    label: n8n Hostname
+    type: string
+    description: Public hostname used by n8n to generate URLs
+    default: ""
+  - key: N8N_PROTOCOL
+    label: n8n Protocol
+    type: string
+    description: Protocol for generated URLs (http or https)
+    default: "http"
+  - key: WEBHOOK_URL
+    label: Webhook URL
+    type: string
+    description: Full external URL for webhooks (overrides host/protocol/port)
+    default: ""
+  - key: GENERIC_TIMEZONE
+    label: Timezone
+    type: string
+    description: TZ used inside the container (e.g. Etc/UTC, Europe/Amsterdam)
+    default: "Etc/UTC"
+  - key: N8N_BASIC_AUTH_ACTIVE
+    label: Basic Auth Enabled
+    type: string
+    description: "Enable built-in basic auth (true/false)"
+    default: "true"
+  - key: N8N_BASIC_AUTH_USER
+    label: Basic Auth User
+    type: string
+    description: Username for basic auth
+    default: "admin"
+  - key: N8N_BASIC_AUTH_PASSWORD
+    label: Basic Auth Password
+    type: string
+    description: Password for basic auth
+    default: ""
+  - key: N8N_ENCRYPTION_KEY
+    label: Encryption Key
+    type: string
+    description: Strong secret used to encrypt credentials
+    default: ""
+mappings:
+  env:
+    - N8N_PORT
+    - N8N_HOST
+    - N8N_PROTOCOL
+    - WEBHOOK_URL
+    - GENERIC_TIMEZONE
+    - N8N_BASIC_AUTH_ACTIVE
+    - N8N_BASIC_AUTH_USER
+    - N8N_BASIC_AUTH_PASSWORD
+    - N8N_ENCRYPTION_KEY
+  files: []
