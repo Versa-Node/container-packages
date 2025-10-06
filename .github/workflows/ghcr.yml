@@ -227,7 +227,7 @@ jobs:
             if candidates:
                 user=candidates[-1]
             print(user)
-PY
+            PY
             "${pkg}/Dockerfile" 2>/dev/null || echo root)"
             [[ -z "${BASE_USER}" ]] && BASE_USER="root"
             echo "Detected runtime user (from Dockerfile): ${BASE_USER}"
