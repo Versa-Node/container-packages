@@ -170,7 +170,7 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-            - name: Build & push (with VNCP files, labels; ARM64 single-arch)
+      - name: Build & push (with VNCP files, labels; ARM64 single-arch)
         if: steps.changed.outputs.changed == 'true' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         env:
           TAG: ${{ steps.vars.outputs.tag }}
