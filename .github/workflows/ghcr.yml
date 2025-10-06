@@ -208,29 +208,32 @@ jobs:
             fi
 
             # Extract description from the package Dockerfile
-            DESC="$(python3 - <<'PY'
+            DESC="$(
+              python3 - "${pkg}/Dockerfile" 2>/dev/null <<'PY'
             import re,sys
             s=open(sys.argv[1],'r',encoding='utf-8',errors='ignore').read()
-            m=re.search(r'org\\.opencontainers\\.image\\.description\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\n\\r#]+))', s)
+            m=re.search(r'org\.opencontainers\.image\.description\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\n\r#]+))', s)
             print((m.group(1) or m.group(2) or m.group(3) or '').strip() if m else '')
             PY
-            "${pkg}/Dockerfile" 2>/dev/null || true)"
-
+            )" || true
+            
             # Detect runtime user by parsing the last USER instruction (fallback root)
-            BASE_USER="$(python3 - <<'PY'
+            BASE_USER="$(
+              python3 - "${pkg}/Dockerfile" 2>/dev/null <<'PY'
             import re,sys
             user='root'
             with open(sys.argv[1],'r',encoding='utf-8',errors='ignore') as f:
                 txt=f.read()
             # find all USER lines not commented out
-            candidates=[m.group(1).strip() for m in re.finditer(r'(?mi)^(?!\\s*#)\\s*USER\\s+(.+?)\\s*$', txt)]
+            candidates=[m.group(1).strip() for m in re.finditer(r'(?mi)^(?!\s*#)\s*USER\s+(.+?)\s*$', txt)]
             if candidates:
                 user=candidates[-1]
             print(user)
             PY
-            "${pkg}/Dockerfile" 2>/dev/null || echo root)"
+            )" || true
             [[ -z "${BASE_USER}" ]] && BASE_USER="root"
             echo "Detected runtime user (from Dockerfile): ${BASE_USER}"
+
 
             # Build BASE single-arch (ARM64)
             RAW_TAG="${TAG}"
