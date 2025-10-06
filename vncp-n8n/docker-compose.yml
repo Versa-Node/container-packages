@@ -1,0 +1,18 @@
+```yaml
+services:
+  vncp-n8n:
+    image: ghcr.io/versa-node/vncp-n8n:latest
+    platform: linux/arm64
+    container_name: vncp-n8n
+    restart: unless-stopped
+    env_file: ./.env
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - ./data:/home/node/.n8n
+    networks: [versanode]
+
+networks:
+  versanode:
+    external: true
+    name: versanode
