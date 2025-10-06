@@ -1,6 +1,7 @@
 services:
   vncp-grafana:
     image: ghcr.io/versa-node/vncp-grafana:latest
+    platform: linux/arm64
     container_name: vncp-grafana
     restart: unless-stopped
     env_file: ./.env
