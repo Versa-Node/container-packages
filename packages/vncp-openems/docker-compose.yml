@@ -1,6 +1,7 @@
 services:
   vncp-openems:
     image: ghcr.io/versa-node/vncp-openems:latest
+    platform: linux/arm64
     container_name: vncp-openems
     restart: unless-stopped
     env_file: ./.env
