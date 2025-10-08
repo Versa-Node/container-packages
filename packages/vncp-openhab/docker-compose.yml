@@ -5,18 +5,19 @@ services:
     container_name: vncp-openhab
     restart: unless-stopped
     networks: [versanode]
-  volumes:
+    volumes:
       - /var/lib/vncp/props:/vncp/props:rw
       - ./scripts/vncp-openhab-dashprop:/usr/local/bin/vncp-openhab-dashprop:ro
-  healthcheck:
-  test:
-    [
-      "CMD-SHELL",
-      "for url in https://127.0.0.1:${OPENHAB_HTTPS_PORT:-8443} http://127.0.0.1:${OPENHAB_HTTP_PORT:-8080}; do \
-         if curl -skI --connect-timeout 2 --max-time 4 \"$url\" \
-           | grep -qE 'HTTP/.* (2..|3..|401|403)'; then exit 0; fi; done; exit 1"
-    ]
-  interval: 30s
-  timeout: 5s
-  retries: 10          # give a few tries
-  start_period: 180s   # openHAB warm-up (increase to 300s on first run)
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "for url in https://127.0.0.1:${OPENHAB_HTTPS_PORT:-8443} http://127.0.0.1:${OPENHAB_HTTP_PORT:-8080}; do \
+             if curl -skI --connect-timeout 2 --max-time 4 \"$url\" \
+               | grep -qE 'HTTP/.* (2..|3..|401|403)'; then \
+               /usr/local/bin/vncp-openhab-dashprop || true; exit 0; fi; done; exit 1"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
