@@ -1,0 +1,38 @@
+#!/usr/bin/env sh
+set -eu
+
+# Directory (mounted from host) where containers publish their dashboard "property"
+PROPS_DIR="${VNCP_PROPS_DIR:-/vncp/props}"
+mkdir -p "$PROPS_DIR"
+
+# Container identity
+CN_NAME="${VNCP_NAME:-$(cat /etc/hostname 2>/dev/null || echo vncp-openhab)}"
+
+# openHAB ports (defaults per image docs)
+HTTP_PORT="${OPENHAB_HTTP_PORT:-8080}"
+HTTPS_PORT="${OPENHAB_HTTPS_PORT:-8443}"
+
+# Dashboard list (each pkg can script its own discovery logic).
+# For openHAB we publish HABPanel via HTTP; you can add others if desired.
+DASH_HTTP="http://localhost:${HTTP_PORT}"
+DASH_HTTPS="https://localhost:${HTTPS_PORT}"
+
+# Build JSON list; keep it minimal and dependency-free (no jq).
+TMP="${PROPS_DIR}/${CN_NAME}.dashboards.json.tmp"
+OUT="${PROPS_DIR}/${CN_NAME}.dashboards.json"
+
+cat >"$TMP" <<EOF
+{
+  "name": "${CN_NAME}",
+  "dashboards": [
+    { "name": "HABPanel", "url": "${DASH_HTTP}" }
+  ],
+  "meta": {
+    "image": "openhab/openhab:latest-debian",
+    "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  }
+}
+EOF
+
+mv -f "$TMP" "$OUT"
+exit 0

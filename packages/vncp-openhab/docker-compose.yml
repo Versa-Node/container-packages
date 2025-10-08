@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  vncp-openhab:
+    image: ghcr.io/versa-node/vncp-openhab:latest
+    platform: linux/arm64
+    container_name: vncp-openhab
+    restart: unless-stopped
+    env_file: ./.env
+    networks: [versanode]
+
+    # Publish dashboards to host-readable property file
+    volumes:
+      - /var/lib/vncp/props:/vncp/props:rw
+
+    # Ensure the publisher exists even if image doesn't contain it:
+    # (Comment this out if you bake it via Dockerfile build step)
+      - ./scripts/vncp-openhab-dashprop:/usr/local/bin/vncp-openhab-dashprop:ro
+
+    # Write the dashboards property shortly after start and then periodically
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/local/bin/vncp-openhab-dashprop || true"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+networks:
+  versanode:
+    external: true
+    name: versanode

@@ -1,0 +1,26 @@
+name: vncp-openhab
+description: openHAB (home automation) with dashboard property publisher
+arch: [linux/arm64, linux/amd64]
+maintainers:
+  - name: Community
+    github: versanode-community
+upstream:
+  image: openhab/openhab:latest-debian
+env:
+  - OPENHAB_HTTP_PORT
+  - OPENHAB_HTTPS_PORT
+  - USER_ID
+  - GROUP_ID
+  - CRYPTO_POLICY
+  - LC_ALL
+  - LANG
+  - LANGUAGE
+  - VNCP_PROPS_DIR
+  - VNCP_NAME
+volumes: []
+ports: []
+healthcheck:
+  test: ["CMD", "bash", "-lc", "echo ok"]
+  interval: 30s
+  timeout: 5s
+  retries: 3
