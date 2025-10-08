@@ -1,7 +1,7 @@
 services:
   vncp-openhab:
     image: ghcr.io/versa-node/vncp-openhab:latest
-    platform: linux/arm64
+    platform: linux/amd64
     container_name: vncp-openhab
     restart: unless-stopped
     networks: [versanode]
