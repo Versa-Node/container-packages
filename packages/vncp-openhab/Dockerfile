@@ -3,10 +3,10 @@ FROM openhab/openhab:latest-debian
 
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-openhab"
-LABEL org.opencontainers.image.description="openHAB home automation platform with VNCP dash publisher."
+LABEL org.opencontainers.image.description="openHAB with VNCP dashboard publisher."
 LABEL io.versanode.vncp.config.path="/usr/share/versanode/vncp.config.yaml"
 
-# ---- Defaults you want visible to UIs and users ----
+# ---- Defaults visible to users/UIs ----
 ENV OPENHAB_HTTP_PORT=8080 \
     OPENHAB_HTTPS_PORT=8443 \
     CRYPTO_POLICY=unlimited \
@@ -14,32 +14,37 @@ ENV OPENHAB_HTTP_PORT=8080 \
     VNCP_PROPS_DIR=/vncp/props \
     VNCP_NAME=vncp-openhab
 
-# Make the VNCP location show up when tools inspect image Config.Volumes
-# (Users can still override with a host bind: -v /var/lib/vncp:/vncp)
+# Advertise a logical data location (users may bind-mount /vncp on host)
 VOLUME ["/vncp"]
 
-# Expose container ports (documentation/hint; host publishes done at run-time)
+# Expose container ports (hints; host publishes at run-time unless using host network)
 EXPOSE 8080 8443
 
-# ---- Tools needed by the healthcheck ----
+# ---- Tools for healthcheck ----
 USER root
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates && \
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl ca-certificates; \
     rm -rf /var/lib/apt/lists/*
 
-# Ensure path exists and is writable by openhab
-RUN mkdir -p /vncp/props && chown -R openhab:openhab /vncp
+# Ensure /vncp/props exists and is writable.
+# If the openhab user/group exist, give them ownership; otherwise just make it world-writable.
+RUN set -eux; \
+    install -d -m 0777 /vncp/props; \
+    if getent passwd openhab >/dev/null 2>&1 && getent group openhab >/dev/null 2>&1; then \
+      chown -R openhab:openhab /vncp || true; \
+      chmod 0775 /vncp /vncp/props || true; \
+    fi
 
 # ---- VNCP dashboard publisher ----
 COPY scripts/vncp-openhab-dashprop /usr/local/bin/vncp-openhab-dashprop
 RUN chmod 0755 /usr/local/bin/vncp-openhab-dashprop
 
-# If you ship a sample compose file too (nice to have)
-# COPY compose.example.yml /usr/share/versanode/examples/vncp-openhab.compose.yml
-
+# Back to runtime user if present (the official image defines it)
+# If a rare variant lacks the user, the healthcheck & script still work as root.
 USER openhab
 
-# ---- Healthcheck: updates dashboards prop on success ----
+# ---- Healthcheck writes dashboard prop on success ----
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=10 \
   CMD sh -lc 'for url in \
       "https://127.0.0.1:${OPENHAB_HTTPS_PORT:-8443}" \
