@@ -162,7 +162,7 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build & push (with VNCP files, labels; ARM64 single-arch)
+      - name: Build & push (multi-arch amd64+arm64)
         if: steps.changed.outputs.changed == 'true' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         env:
           TAG: ${{ steps.vars.outputs.tag }}
@@ -170,6 +170,9 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           export CREATED="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+          # Build both architectures
+          PLATFORMS="linux/amd64,linux/arm64"
 
           CACHE_KEY="${GITHUB_REF_NAME//\//_}"
           CACHE_FROM="type=gha,scope=${CACHE_KEY}"
@@ -199,7 +202,7 @@ jobs:
               printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "${pkg}/README.md"
             fi
 
-            # --- Extract description without heredocs (YAML-safe) ---
+            # Extract description (best-effort)
             DESC=""
             if [[ -f "${pkg}/Dockerfile" ]]; then
               _line="$(grep -Eio 'org\.opencontainers\.image\.description[[:space:]]*=[[:space:]]*.*' "${pkg}/Dockerfile" | head -n1 || true)"
@@ -216,22 +219,31 @@ jobs:
               fi
             fi
 
-            # --- Detect runtime user (last non-comment USER) ---
+            # Detect runtime user (last USER)
             BASE_USER="$(grep -Ei '^[[:space:]]*USER[[:space:]]+' "${pkg}/Dockerfile" 2>/dev/null | sed -E 's/^[[:space:]]*USER[[:space:]]+//' | sed -E 's/[[:space:]]+$//' | tail -n1 || true)"
             [[ -z "${BASE_USER}" ]] && BASE_USER="root"
-            echo "Detected runtime user (from Dockerfile): ${BASE_USER}"
+            echo "Detected runtime user: ${BASE_USER}"
 
-            # Build BASE single-arch (ARM64)
             RAW_TAG="${TAG}"
+            SHORT="${GITHUB_SHA::7}"
+
+            # ---------- BASE (multi-arch) ----------
+            # Publishes:
+            #   ghcr.io/${ORG}/${name}:${RAW_TAG}      (manifest list)
+            #   ghcr.io/${ORG}/${name}:${SHORT}        (manifest list)
+            #   ghcr.io/${ORG}/${name}:${RAW_TAG}-amd64 / -arm64  (arch-specific)
             docker buildx build \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
-              --platform linux/arm64 \
+              --platform "${PLATFORMS}" \
               -t "ghcr.io/${ORG}/${name}:${RAW_TAG}" \
-              -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
-              "${pkg}" --push
+              -t "ghcr.io/${ORG}/${name}:${SHORT}" \
+              -t "ghcr.io/${ORG}/${name}:${RAW_TAG}-amd64" \
+              -t "ghcr.io/${ORG}/${name}:${RAW_TAG}-arm64" \
+              --push \
+              "${pkg}"
 
-            # Wrapper Dockerfile (adds VNCP files + labels)
+            # ---------- WRAPPER (multi-arch) ----------
             WRAP_DOCKERFILE="$(mktemp)"
             {
               echo '# syntax=docker/dockerfile:1.6'
@@ -265,19 +277,22 @@ jobs:
               LABELS+=( --label "org.opencontainers.image.description=${DESC}" )
             fi
 
-            # Build WRAPPER single-arch (ARM64 final)
+            # The BASE_IMAGE we pass here is the multi-arch tag we just pushed.
             docker buildx build \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
-              --platform linux/arm64 \
+              --platform "${PLATFORMS}" \
               --build-arg "BASE_IMAGE=ghcr.io/${ORG}/${name}:${RAW_TAG}" \
               --build-arg "BASE_USER=${BASE_USER}" \
               --build-arg "VNCP_DIR=${VNCP_DIR}" \
               -f "$WRAP_DOCKERFILE" \
               "${LABELS[@]}" \
               -t "ghcr.io/${ORG}/${name}:${TAG}" \
-              -t "ghcr.io/${ORG}/${name}:${GITHUB_SHA::7}" \
-              "${pkg}" --push
+              -t "ghcr.io/${ORG}/${name}:${SHORT}" \
+              -t "ghcr.io/${ORG}/${name}:${TAG}-amd64" \
+              -t "ghcr.io/${ORG}/${name}:${TAG}-arm64" \
+              --push \
+              "${pkg}"
 
             BUILT_LIST+=("${name}")
             echo "::endgroup::"
@@ -285,5 +300,13 @@ jobs:
           done
 
           printf 'BUILT_LIST=%s\n' "${BUILT_LIST[*]}" >> "$GITHUB_ENV"
+
+      - name: Verify manifests (optional)
+        if: env.BUILT_LIST != ''
+        run: |
+          for name in ${BUILT_LIST}; do
+            echo "Inspecting ghcr.io/${ORG}/${name}:${{ steps.vars.outputs.tag }}"
+            docker buildx imagetools inspect "ghcr.io/${ORG}/${name}:${{ steps.vars.outputs.tag }}" || true
+          done
 
 
