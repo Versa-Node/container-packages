@@ -1,6 +1,6 @@
 name: vncp-influxdb
 description: 
-arch: [linux/arm64]
+arch: [linux/arm64, linux/amd64]
 maintainers:
   - name: Community
     github: versanode-community

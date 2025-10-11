@@ -1,6 +1,6 @@
 name: vncp-home-assistant
 description: Home Assistant (home automation)
-arch: [linux/arm64]
+arch: [linux/arm64, linux/amd64]
 maintainers:
   - name: Community
     github: versanode-community
