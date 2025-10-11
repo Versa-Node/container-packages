@@ -15,7 +15,7 @@ services:
       - ./openhab_userdata:/openhab/userdata
 
       # VNCP: host-readable dashboards property
-      - /var/lib/vncp/props:/vncp/props:rw
+      - /var/lib/vncp:/vncp:rw
       # VNCP: publisher script (omit if baked into image)
       - ./scripts/vncp-openhab-dashprop:/usr/local/bin/vncp-openhab-dashprop:ro
 
