@@ -1,12 +1,11 @@
-# syntax=docker/dockerfile:1.6
 FROM openhab/openhab:latest
 
 # ---- Metadata ----
-LABEL org.opencontainers.image.title="vncp-openhab"
-LABEL org.opencontainers.image.description="openHAB with VNCP dashboard publisher."
-LABEL io.versanode.vncp.config.path="/usr/share/versanode/vncp.config.yaml"
+LABEL org.opencontainers.image.title="vncp-openhab" \
+      org.opencontainers.image.description="openHAB with VNCP dashboard publisher." \
+      io.versanode.vncp.config.path="/usr/share/versanode/vncp.config.yaml"
 
-# ---- Defaults visible to users/UIs ----
+# ---- Defaults visible to UIs and users ----
 ENV OPENHAB_HTTP_PORT=8080 \
     OPENHAB_HTTPS_PORT=8443 \
     CRYPTO_POLICY=unlimited \
@@ -14,37 +13,49 @@ ENV OPENHAB_HTTP_PORT=8080 \
     VNCP_PROPS_DIR=/vncp/props \
     VNCP_NAME=vncp-openhab
 
-# Advertise a logical data location (users may bind-mount /vncp on host)
+# Document the VNCP location; users can bind-mount /var/lib/vncp -> /vncp
 VOLUME ["/vncp"]
 
-# Expose container ports (hints; host publishes at run-time unless using host network)
+# Document ports (host publishing is done at runtime)
 EXPOSE 8080 8443
 
-# ---- Tools for healthcheck ----
-USER root
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends curl ca-certificates; \
-    rm -rf /var/lib/apt/lists/*
+USER 0
 
-# Ensure /vncp/props exists and is writable.
-# If the openhab user/group exist, give them ownership; otherwise just make it world-writable.
+# Install curl (Debian or Alpine) for healthcheck; no-op if already present
 RUN set -eux; \
-    install -d -m 0777 /vncp/props; \
-    if getent passwd openhab >/dev/null 2>&1 && getent group openhab >/dev/null 2>&1; then \
-      chown -R openhab:openhab /vncp || true; \
-      chmod 0775 /vncp /vncp/props || true; \
+    if ! command -v curl >/dev/null 2>&1; then \
+      if command -v apt-get >/dev/null 2>&1; then \
+        apt-get update && \
+        apt-get install -y --no-install-recommends curl ca-certificates && \
+        rm -rf /var/lib/apt/lists/*; \
+      elif command -v apk >/dev/null 2>&1; then \
+        apk add --no-cache curl ca-certificates; \
+      else \
+        echo "WARN: unknown base, curl not installed"; \
+      fi; \
+    fi
+
+# Ensure VNCP dir exists and is writable.
+# If 'openhab' user exists, own it; otherwise, make it world-writable as a safe fallback.
+RUN set -eux; \
+    mkdir -p /vncp/props; \
+    if id -u openhab >/dev/null 2>&1; then \
+      chown -R openhab:openhab /vncp; \
+      chmod -R 0775 /vncp; \
+    else \
+      chmod -R 0777 /vncp; \
     fi
 
 # ---- VNCP dashboard publisher ----
 COPY scripts/vncp-openhab-dashprop /usr/local/bin/vncp-openhab-dashprop
 RUN chmod 0755 /usr/local/bin/vncp-openhab-dashprop
 
-# Back to runtime user if present (the official image defines it)
-# If a rare variant lacks the user, the healthcheck & script still work as root.
+# Switch back to openhab if present (typical for official images); otherwise stay root.
+# (This will succeed on official openHAB images. If you ever swap to a base without that user,
+#  build with --build-arg BASE_TAG=<an openHAB tag> or remove this USER line.)
 USER openhab
 
-# ---- Healthcheck writes dashboard prop on success ----
+# Healthcheck: when OH answers locally, publish dashboards JSON into /vncp/props
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=10 \
   CMD sh -lc 'for url in \
       "https://127.0.0.1:${OPENHAB_HTTPS_PORT:-8443}" \
