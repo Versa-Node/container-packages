@@ -284,7 +284,6 @@ jobs:
 
             LABELS=(
               --label "io.versanode.vncp.config.path=${VNCP_DIR}/vncp.config.yaml"
-              --label "io.versanode.vncp.readme.path=${VNCP_DIR}/README.md"
               --label "org.opencontainers.image.title=${name}"
               --label "org.opencontainers.image.version=${TAG}"
               --label "org.opencontainers.image.revision=${GITHUB_SHA}"
@@ -296,6 +295,30 @@ jobs:
             )
             [[ -n "${DESC}" ]] && LABELS+=( --label "org.opencontainers.image.description=${DESC}" )
 
+            README_FILE="${pkg}/README.md"
+            ENC_LABEL_PREFIX="io.versanode.vncp.readme"
+
+            # note: base64 w/ no newlines; `-w0` on GNU, `-b0` on macOS; ubuntu-latest uses GNU
+            README_B64="$(base64 -w0 "${README_FILE}")"
+
+            # choose a safe chunk size to keep label values well under typical limits
+            CHUNK_SIZE=7000
+
+            # Split into chunks if needed
+            LABELS+=( --label "${ENC_LABEL_PREFIX}.encoding=b64,utf8" )
+            LABELS+=( --label "${ENC_LABEL_PREFIX}.path=${VNCP_DIR}/README.md" )
+
+            if [ "${#README_B64}" -le "${CHUNK_SIZE}" ]; then
+              LABELS+=( --label "${ENC_LABEL_PREFIX}.single=${README_B64}" )
+            else
+              i=0
+              while [ $(( i * CHUNK_SIZE )) -lt ${#README_B64} ]; do
+                start=$(( i * CHUNK_SIZE ))
+                LABELS+=( --label "${ENC_LABEL_PREFIX}.${i}=${README_B64:start:CHUNK_SIZE}" )
+                i=$(( i + 1 ))
+              done
+              LABELS+=( --label "${ENC_LABEL_PREFIX}.parts=$i" )
+            fi
             docker buildx build \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
