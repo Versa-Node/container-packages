@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.6
-FROM openhab/openhab:latest-debian
+FROM openhab/openhab:latest
 
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-openhab"
