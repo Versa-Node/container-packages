@@ -1,31 +1,5 @@
 # ------------------------------------------------------------------------------
 # Publish packages to GHCR (versa-node/*)
-#
-# HOW THIS WORKS
-# 1) Triggers:
-#    - push to main (if packages/** or common CI files changed)
-#    - push tags v*.*.* (build ALL packages)
-#    - manual (workflow_dispatch) with:
-#        changed_only: build only changed (default true)
-#        packages:     override with a list
-#
-# 2) Change detection:
-#    - Diff current commit vs previous -> which packages/<name> changed
-#    - If shared scripts/workflows changed -> build ALL
-#
-# 3) Build strategy (per package):
-#    - Build the package’s Dockerfile for linux/amd64 + linux/arm64 (BASE image)
-#    - Detect the BASE image runtime user (local amd64 load)
-#    - Build a tiny WRAPPER image FROM that BASE which:
-#       * Creates /usr/share/versanode
-#       * Copies vncp.config.yaml and README.md
-#       * Applies common labels
-#       * Re-applies org.opencontainers.image.description
-#    - Push the WRAPPER as the final tag
-# ------------------------------------------------------------------------------
-
-# ------------------------------------------------------------------------------
-# Publish packages to GHCR (versa-node/*)
 # ------------------------------------------------------------------------------
 
 name: Publish packages to GHCR
@@ -125,8 +99,7 @@ jobs:
           fi
 
           if [[ ${#PKGS[@]} -eq 0 && $FORCE_ALL -eq 0 ]]; then
-            BASE="${{ github.event.before }}"
-            HEAD="${{ github.sha }}"
+            BASE="${{ github.event.before }}"; HEAD="${{ github.sha }}"
             if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
               BASE="$(git rev-parse HEAD^ || echo '')"
             fi
@@ -162,7 +135,18 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build & push (multi-arch amd64+arm64)
+      # ---------------------- NEW: yq for package.yaml parsing ----------------------
+      - name: Install yq
+        run: |
+          set -e
+          YQ_VERSION=v4.44.3
+          sudo wget -qO /usr/local/bin/yq \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      # ---------------------- UPDATED: per-package platform detection ----------------------
+      - name: Build & push (respect per-package arch; skip missing)
         if: steps.changed.outputs.changed == 'true' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         env:
           TAG: ${{ steps.vars.outputs.tag }}
@@ -171,8 +155,7 @@ jobs:
           shopt -s nullglob
           export CREATED="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
-          # Build both architectures
-          PLATFORMS="linux/amd64,linux/arm64"
+          DEFAULT_PLATFORMS=("linux/amd64" "linux/arm64")
 
           CACHE_KEY="${GITHUB_REF_NAME//\//_}"
           CACHE_FROM="type=gha,scope=${CACHE_KEY}"
@@ -185,6 +168,9 @@ jobs:
 
           BUILT_LIST=()
 
+          # helper: join array with commas
+          join_csv() { local IFS=,; echo "$*"; }
+
           for name in ${PKG_LIST}; do
             pkg="packages/${name}"
             echo "::group::Package: ${name}"
@@ -195,27 +181,16 @@ jobs:
             fi
 
             # Ensure VNCP files so COPY never fails
-            if [[ ! -f "${pkg}/vncp.config.yaml" ]]; then
-              printf 'name: %s\nversion: "%s"\n' "$name" "${TAG}" > "${pkg}/vncp.config.yaml"
-            fi
-            if [[ ! -f "${pkg}/README.md" ]]; then
-              printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "${pkg}/README.md"
-            fi
+            [[ -f "${pkg}/vncp.config.yaml" ]] || printf 'name: %s\nversion: "%s"\n' "$name" "${TAG}" > "${pkg}/vncp.config.yaml"
+            [[ -f "${pkg}/README.md"        ]] || printf '# %s\n\nAuto-generated README for %s.\n' "$name" "$name" > "${pkg}/README.md"
 
             # Extract description (best-effort)
             DESC=""
             if [[ -f "${pkg}/Dockerfile" ]]; then
               _line="$(grep -Eio 'org\.opencontainers\.image\.description[[:space:]]*=[[:space:]]*.*' "${pkg}/Dockerfile" | head -n1 || true)"
               if [[ -n "${_line}" ]]; then
-                _desc="${_line#*=}"
-                _desc="${_desc%%#*}"
-                _desc="$(printf '%s' "${_desc}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
-                if [[ "${_desc}" == \"*\" && "${_desc}" == *\" ]]; then
-                  _desc="${_desc:1:${#_desc}-2}"
-                elif [[ "${_desc}" == \'*\' && "${_desc}" == *\' ]]; then
-                  _desc="${_desc:1:${#_desc}-2}"
-                fi
-                DESC="${_desc}"
+                _desc="${_line#*=}"; _desc="${_desc%%#*}"
+                DESC="$(printf '%s' "${_desc}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | sed -E 's/^["'\'']?(.*)["'\'']?$/\1/')"
               fi
             fi
 
@@ -227,19 +202,65 @@ jobs:
             RAW_TAG="${TAG}"
             SHORT="${GITHUB_SHA::7}"
 
-            # ---------- BASE (multi-arch) ----------
-            # Publishes:
-            #   ghcr.io/${ORG}/${name}:${RAW_TAG}      (manifest list)
-            #   ghcr.io/${ORG}/${name}:${SHORT}        (manifest list)
-            #   ghcr.io/${ORG}/${name}:${RAW_TAG}-amd64 / -arm64  (arch-specific)
+            # ---- Requested platforms from package.yaml (fallback to default) ----
+            REQ_PLATFORMS=()
+            if [[ -f "${pkg}/package.yaml" ]]; then
+              while IFS= read -r p; do
+                [[ -n "$p" ]] && REQ_PLATFORMS+=("$p")
+              done < <(yq -r '.arch[]? // empty' "${pkg}/package.yaml")
+            fi
+            if [[ ${#REQ_PLATFORMS[@]} -eq 0 ]]; then
+              REQ_PLATFORMS=("${DEFAULT_PLATFORMS[@]}")
+            fi
+            echo "Requested platforms: $(join_csv "${REQ_PLATFORMS[@]}")"
+
+            # ---- Intersect with upstream image platforms (if defined) ----
+            UPSTREAM_IMAGE=""
+            if [[ -f "${pkg}/package.yaml" ]]; then
+              UPSTREAM_IMAGE="$(yq -r '.upstream.image // ""' "${pkg}/package.yaml")"
+            fi
+
+            CAND_PLATFORMS=("${REQ_PLATFORMS[@]}")
+            if [[ -n "${UPSTREAM_IMAGE}" ]]; then
+              echo "Upstream image: ${UPSTREAM_IMAGE}"
+              if docker buildx imagetools inspect "${UPSTREAM_IMAGE}" >/tmp/inspect.txt 2>/dev/null; then
+                mapfile -t UP_PLATS < <(grep -Eo 'linux/(amd64|arm64|arm/v[0-9]+|ppc64le|s390x|riscv64)' /tmp/inspect.txt | sort -u)
+                if [[ ${#UP_PLATS[@]} -gt 0 ]]; then
+                  echo "Upstream provides: $(join_csv "${UP_PLATS[@]}")"
+                  TMP=()
+                  for p in "${CAND_PLATFORMS[@]}"; do
+                    for u in "${UP_PLATS[@]}"; do
+                      [[ "$p" == "$u" ]] && TMP+=("$p")
+                    done
+                  done
+                  if [[ ${#TMP[@]} -gt 0 ]]; then
+                    CAND_PLATFORMS=("${TMP[@]}")
+                  else
+                    echo "NOTE: No overlap with upstream; keeping requested set."
+                  fi
+                fi
+              else
+                echo "Could not inspect upstream platforms (non-fatal)."
+              fi
+            fi
+
+            # De-dup and finalize
+            read -r -a PLATFORMS <<< "$(printf '%s\n' "${CAND_PLATFORMS[@]}" | sort -u | tr '\n' ' ')"
+            if [[ ${#PLATFORMS[@]} -eq 0 ]]; then
+              echo "No platforms to build for ${name}; skipping."
+              echo "::endgroup::"
+              continue
+            fi
+            PLAT_CSV="$(join_csv "${PLATFORMS[@]}")"
+            echo "Final platforms: ${PLAT_CSV}"
+
+            # ---------- BASE (multi-arch for final set) ----------
             docker buildx build \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
-              --platform "${PLATFORMS}" \
+              --platform "${PLAT_CSV}" \
               -t "ghcr.io/${ORG}/${name}:${RAW_TAG}" \
               -t "ghcr.io/${ORG}/${name}:${SHORT}" \
-              -t "ghcr.io/${ORG}/${name}:${RAW_TAG}-amd64" \
-              -t "ghcr.io/${ORG}/${name}:${RAW_TAG}-arm64" \
               --push \
               "${pkg}"
 
@@ -273,15 +294,12 @@ jobs:
               --label "org.opencontainers.image.vendor=${OWNER}"
               --label "org.opencontainers.image.licenses=${DEFAULT_LICENSE}"
             )
-            if [[ -n "${DESC}" ]]; then
-              LABELS+=( --label "org.opencontainers.image.description=${DESC}" )
-            fi
+            [[ -n "${DESC}" ]] && LABELS+=( --label "org.opencontainers.image.description=${DESC}" )
 
-            # The BASE_IMAGE we pass here is the multi-arch tag we just pushed.
             docker buildx build \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
-              --platform "${PLATFORMS}" \
+              --platform "${PLAT_CSV}" \
               --build-arg "BASE_IMAGE=ghcr.io/${ORG}/${name}:${RAW_TAG}" \
               --build-arg "BASE_USER=${BASE_USER}" \
               --build-arg "VNCP_DIR=${VNCP_DIR}" \
@@ -289,10 +307,18 @@ jobs:
               "${LABELS[@]}" \
               -t "ghcr.io/${ORG}/${name}:${TAG}" \
               -t "ghcr.io/${ORG}/${name}:${SHORT}" \
-              -t "ghcr.io/${ORG}/${name}:${TAG}-amd64" \
-              -t "ghcr.io/${ORG}/${name}:${TAG}-arm64" \
               --push \
               "${pkg}"
+
+            # OPTIONAL: per-arch tags only for successfully built arches
+            for p in "${PLATFORMS[@]}"; do
+              suffix="${p#linux/}"
+              echo "Creating filtered tag :${TAG}-${suffix} for ${p}"
+              docker buildx imagetools create \
+                --tag "ghcr.io/${ORG}/${name}:${TAG}-${suffix}" \
+                --filter "platform=${p}" \
+                "ghcr.io/${ORG}/${name}:${TAG}" >/dev/null 2>&1 || true
+            done
 
             BUILT_LIST+=("${name}")
             echo "::endgroup::"
@@ -308,5 +334,3 @@ jobs:
             echo "Inspecting ghcr.io/${ORG}/${name}:${{ steps.vars.outputs.tag }}"
             docker buildx imagetools inspect "ghcr.io/${ORG}/${name}:${{ steps.vars.outputs.tag }}" || true
           done
-
-
