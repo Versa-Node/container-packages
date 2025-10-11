@@ -19,14 +19,15 @@ VOLUME ["/vncp"]
 # Document ports (host publishing is done at runtime)
 EXPOSE 8080 8443
 
+# Stay root for install/setup; don't switch to 'openhab' here
 USER 0
 
-# Install curl (Debian or Alpine) for healthcheck; no-op if already present
+# Install curl for healthcheck (supports both Debian and Alpine variants)
 RUN set -eux; \
     if ! command -v curl >/dev/null 2>&1; then \
       if command -v apt-get >/dev/null 2>&1; then \
-        apt-get update && \
-        apt-get install -y --no-install-recommends curl ca-certificates && \
+        apt-get update; \
+        apt-get install -y --no-install-recommends curl ca-certificates; \
         rm -rf /var/lib/apt/lists/*; \
       elif command -v apk >/dev/null 2>&1; then \
         apk add --no-cache curl ca-certificates; \
@@ -35,27 +36,18 @@ RUN set -eux; \
       fi; \
     fi
 
-# Ensure VNCP dir exists and is writable.
-# If 'openhab' user exists, own it; otherwise, make it world-writable as a safe fallback.
+# Ensure VNCP dir exists and is writable by any runtime UID
 RUN set -eux; \
     mkdir -p /vncp/props; \
-    if id -u openhab >/dev/null 2>&1; then \
-      chown -R openhab:openhab /vncp; \
-      chmod -R 0775 /vncp; \
-    else \
-      chmod -R 0777 /vncp; \
-    fi
+    chmod -R 0777 /vncp
 
 # ---- VNCP dashboard publisher ----
 COPY scripts/vncp-openhab-dashprop /usr/local/bin/vncp-openhab-dashprop
 RUN chmod 0755 /usr/local/bin/vncp-openhab-dashprop
 
-# Switch back to openhab if present (typical for official images); otherwise stay root.
-# (This will succeed on official openHAB images. If you ever swap to a base without that user,
-#  build with --build-arg BASE_TAG=<an openHAB tag> or remove this USER line.)
-USER openhab
+# Do NOT 'USER openhab' here; let the base image/entrypoint decide at runtime
 
-# Healthcheck: when OH answers locally, publish dashboards JSON into /vncp/props
+# Healthcheck: when openHAB answers locally, publish dashboards JSON into /vncp/props
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=10 \
   CMD sh -lc 'for url in \
       "https://127.0.0.1:${OPENHAB_HTTPS_PORT:-8443}" \
