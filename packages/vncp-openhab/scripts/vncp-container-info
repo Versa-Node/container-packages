@@ -2,8 +2,8 @@
 set -eu
 
 # Directory (mounted from host) where containers publish their dashboard "property"
-PROPS_DIR="${VNCP_PROPS_DIR:-/vncp/props}"
-mkdir -p "$PROPS_DIR"
+INFO_DIR="${VNCP_INFO_DIR:-/vncp}"
+mkdir -p "$INFO_DIR"
 
 # Container identity
 CN_NAME="${VNCP_NAME:-$(cat /etc/hostname 2>/dev/null || echo vncp-openhab)}"
@@ -18,8 +18,8 @@ DASH_HTTP="http://localhost:${HTTP_PORT}"
 DASH_HTTPS="https://localhost:${HTTPS_PORT}"
 
 # Build JSON list; keep it minimal and dependency-free (no jq).
-TMP="${PROPS_DIR}/${CN_NAME}.dashboards.json.tmp"
-OUT="${PROPS_DIR}/${CN_NAME}.dashboards.json"
+TMP="info.json.tmp"
+OUT="info.json"
 
 cat >"$TMP" <<EOF
 {
@@ -28,7 +28,7 @@ cat >"$TMP" <<EOF
     { "name": "HABPanel", "url": "${DASH_HTTP}" }
   ],
   "meta": {
-    "image": "openhab/openhab:latest-debian",
+    "image": "openhab/openhab:latest",
     "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   }
 }

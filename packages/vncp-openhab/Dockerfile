@@ -10,7 +10,7 @@ ENV OPENHAB_HTTP_PORT=8080 \
     OPENHAB_HTTPS_PORT=8443 \
     CRYPTO_POLICY=unlimited \
     EXTRA_JAVA_OPTS="-Duser.timezone=Europe/Berlin" \
-    VNCP_PROPS_DIR=/vncp/props \
+    VNCP_INFO_DIR=/vncp \
     VNCP_NAME=vncp-openhab
 
 # Document the VNCP location; users can bind-mount /var/lib/vncp -> /vncp
@@ -38,21 +38,21 @@ RUN set -eux; \
 
 # Ensure VNCP dir exists and is writable by any runtime UID
 RUN set -eux; \
-    mkdir -p /vncp/props; \
+    mkdir -p /vncp; \
     chmod -R 0777 /vncp
 
 # ---- VNCP dashboard publisher ----
-COPY scripts/vncp-openhab-dashprop /usr/local/bin/vncp-openhab-dashprop
-RUN chmod 0755 /usr/local/bin/vncp-openhab-dashprop
+COPY scripts/vncp-container-info /usr/local/bin/vncp-container-info
+RUN chmod 0755 /usr/local/bin/vncp-container-info
 
 # Do NOT 'USER openhab' here; let the base image/entrypoint decide at runtime
 
-# Healthcheck: when openHAB answers locally, publish dashboards JSON into /vncp/props
+# Healthcheck: when openHAB answers locally, publish dashboards JSON into /vncp
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=10 \
   CMD sh -lc 'for url in \
       "https://127.0.0.1:${OPENHAB_HTTPS_PORT:-8443}" \
       "http://127.0.0.1:${OPENHAB_HTTP_PORT:-8080}"; do \
         if curl -skI --connect-timeout 2 --max-time 4 "$url" | grep -qE "HTTP/.* (2..|3..|401|403)"; then \
-          /usr/local/bin/vncp-openhab-dashprop || true; exit 0; \
+          /usr/local/bin/vncp-container-info || true; exit 0; \
         fi; \
       done; exit 1'
