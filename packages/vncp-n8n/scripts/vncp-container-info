@@ -20,10 +20,10 @@ cat >"$TMP" <<EOF
 {
   "name": "${CN_NAME}",
   "dashboards": [
-    { "name": "HABPanel", "url": "$(http_url "$HTTP_PORT")" }
+    { "name": "n8n", "url": "$(http_url "$HTTP_PORT")" }
   ],
   "meta": {
-    "image": "openhab/openhab:latest",
+    "image": "n8nio/n8n:latest",
     "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   }
 }

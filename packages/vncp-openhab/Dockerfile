@@ -2,8 +2,7 @@ FROM openhab/openhab:latest
 
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-openhab" \
-      org.opencontainers.image.description="openHAB with VNCP dashboard publisher." \
-      io.versanode.vncp.config.path="/usr/share/versanode/vncp.config.yaml"
+      org.opencontainers.image.description="openHAB with VNCP dashboard publisher."
 
 # ---- Defaults visible to UIs and users ----
 ENV OPENHAB_HTTP_PORT=8080 \

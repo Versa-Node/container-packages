@@ -1,42 +1,123 @@
-# vncp-openhab — dashboard property publisher
+# VersaNode OpenHAB (vncp-openhab)
 
-This package publishes a *property* (JSON file) that lists one or more dashboards
-exposed by the container, so the host can easily discover and link to them.
+A friendly OpenHAB container tailored for the **VersaNode** UI.  
+This package keeps defaults sensible and makes it easy to run and reach OpenHAB (Main UI / HABPanel) without digging into Docker commands.
 
-## What gets written
-A file named `/var/lib/vncp/props/<container>.dashboards.json` on the host, e.g.:
+> **Base image:** [`openhab/openhab`](https://hub.docker.com/r/openhab/openhab/)
 
-```json
-{
-  "name": "vncp-openhab",
-  "dashboards": [
-    { "name": "HABPanel", "url": "http://localhost:8080" }
-  ],
-  "meta": {
-    "image": "openhab/openhab:latest-debian",
-    "timestamp": "2025-01-01T00:00:00Z"
-  }
-}
-```
+💬 **Have questions or ideas?**  
+Join the community discussion here → [VersaNode Discussions](https://github.com/orgs/Versa-Node/discussions)
 
-The `HABPanel` URL is computed from `OPENHAB_HTTP_PORT` (default 8080).
-Each package can script its own discovery logic in `scripts/vncp-openhab-dashprop`.
+---
 
-## How it works
-- A small script (`/usr/local/bin/vncp-openhab-dashprop`) writes the JSON on startup (via healthcheck start period) and every 30s.
-- The script writes to `/vncp/props` inside the container, which is a bind-mount to `/var/lib/vncp/props` on the host.
+## Quick start (VersaNode UI)
 
-## Usage
-```bash
-bash ../../tools/ensure-network.sh
-cp .env.example .env  # adjust ports if needed
-docker compose up -d
-```
+1. **Open** the VersaNode containers page and click **Create container**.
+2. In the **Image** box, choose or type:
+   - `ghcr.io/versa-node/vncp-openhab:latest` (or your tagged build), or
+   - `openhab/openhab:latest` if you don’t need extras.
+3. **Name**: Leave the suggested name or set your own.
+4. **Command**: Leave blank (uses image defaults).
+5. **Network**: Keep the default VersaNode network, or switch to host if you prefer.
+6. **Ports** (typical):
+   - Map **8080 → 8080** for HTTP (Main UI / HABPanel).
+   - Optionally map **8443 → 8443** for HTTPS.
+7. **Volumes** (recommended):
+   - Map your OpenHAB userdata/config (persists settings, add-ons, things, logs). For example:
+     - Host: `/srv/openhab/userdata` → Container: `/openhab/userdata`
+     - Host: `/srv/openhab/conf` → Container: `/openhab/conf`
+8. **Environment** (optional, see below).
+9. Click **Create and run**. When the container status is **Running**, open your browser to:
+   - Main UI: `http://<your-host>:8080`
+   - HABPanel: `http://<your-host>:8080/habpanel`
+   - HTTPS: `https://<your-host>:8443`
 
-## Customize
-- Change the published dashboard list by editing `scripts/vncp-openhab-dashprop`.
-- Override container name in JSON via `VNCP_NAME` in `.env`.
-- Change host registry path by altering the compose volume mapping.
+---
 
-## Notes
-- Using `localhost` assumes the host/browser can reach the port mapping directly. Adjust to your hostname or proxy URL if needed.
+## Common options
+
+### Environment variables
+Most users don’t need to change these, but they’re handy for quick tweaks.
+
+| Variable | Default | What it does |
+|---|---:|---|---|
+| `OPENHAB_HTTP_PORT` | `8080` | HTTP port inside the container. Usually keep as-is and map to a host port. |
+| `OPENHAB_HTTPS_PORT` | `8443` | HTTPS port inside the container. |
+| `TZ` | *(unset)* | Your timezone, e.g. `Europe/London` or `America/New_York`. |
+| `EXTRA_JAVA_OPTS` | `-Duser.timezone=Europe/Berlin` | Extra JVM options for OpenHAB. Change the timezone if needed. |
+
+> 💡 Tip: If host port **8080** is already in use, map another host port (e.g. `18080:8080`) and open `http://<your-host>:18080`.
+
+### Volumes (persistence)
+To keep your OpenHAB configuration and state across upgrades/restarts, bind-mount:
+
+- `/openhab/userdata` – runtime data (addons, cache, logs, etc.)
+- `/openhab/conf` – your configuration files
+
+Example mappings (host → container):
+- `/srv/openhab/userdata` → `/openhab/userdata`
+- `/srv/openhab/conf` → `/openhab/conf`
+
+Create the host folders first and ensure they are writable by Docker.
+
+---
+
+## Health & readiness
+
+The container periodically checks whether OpenHAB is reachable on its internal ports. Once reachable, the UI links will work. First start can take a few minutes, especially while add‑ons download.
+
+**Troubleshooting start-up**
+
+- Wait until status shows **Running** (and the CPU/memory usage settles).
+- Check **Logs** tab for errors (missing permissions, port conflicts, etc.).
+- If you changed ports, confirm your **port mappings** match your browser URL.
+- Try restarting the container after changing volumes or environment variables.
+
+---
+
+## Typical setups
+
+**A. Simple local test**
+- Ports: `8080:8080`
+- Volumes: *(none)*
+- Browse: `http://localhost:8080`
+
+**B. Persistent home server**
+- Ports: `8080:8080`, `8443:8443`
+- Volumes:
+  - `/srv/openhab/userdata:/openhab/userdata`
+  - `/srv/openhab/conf:/openhab/conf`
+- Env: `TZ=Europe/London` (or your timezone)
+- Browse: `http://<server>:8080`
+
+**C. Alternate host ports**
+- Ports: `18080:8080`
+- Browse: `http://<server>:18080`
+
+---
+
+## Updating
+
+1. Stop the container.
+2. In the create/run dialog, enable **Pull latest image** (or update the tag).
+3. Recreate the container with the same **volumes** so your data persists.
+
+> If you used the plain `openhab/openhab` image before, you can switch images and keep the same volume mounts.
+
+---
+
+## Notes for power users
+
+- You can select **Use host network** if you prefer not to set port mappings. Only do this if the host has no conflicting services on 8080/8443.
+- For reverse proxies, leave container ports at defaults (8080/8443) and terminate TLS at your proxy.
+- The image retains compatibility with OpenHAB’s standard paths and behavior.
+
+---
+
+## Support & references
+
+- OpenHAB docs: https://www.openhab.org/docs/
+- Base image on Docker Hub: https://hub.docker.com/r/openhab/openhab/
+- Discuss & get help: [VersaNode Community Discussions](https://github.com/orgs/Versa-Node/discussions)
+
+If you need help choosing ports, volumes, or diagnosing a failed start, open the container’s **Logs** tab and copy the last 50–100 lines into your support request.
