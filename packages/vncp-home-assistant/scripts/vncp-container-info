@@ -7,16 +7,9 @@ OUT="${INFO_DIR%/}/vncp-info.json"
 
 CN_NAME="${VNCP_NAME:-$(cat /etc/hostname 2>/dev/null || echo vncp-home-assistant)}"
 HTTP_PORT="${HASS_HTTP_PORT:-8123}"
-BASE="${VNCP_PUBLIC_BASE:-}"
 
 http_url() {
-  # If VNCP_PUBLIC_BASE is set (e.g. http://myhost or https://ha.example.com),
-  # append the internal port. Otherwise keep a <hostname> placeholder for the UI to replace.
-  if [ -n "$BASE" ]; then
-    printf "%s:%s" "$BASE" "$1"
-  else
-    printf "http://<hostname>:%s" "$1"
-  fi
+  printf "http://localhost:%s" "$1"
 }
 
 umask 022

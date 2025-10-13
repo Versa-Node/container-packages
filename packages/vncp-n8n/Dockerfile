@@ -2,7 +2,8 @@ FROM n8nio/n8n:latest
 
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-n8n" \
-      org.opencontainers.image.description="n8n workflow automation platform"
+      org.opencontainers.image.description="n8n workflow automation platform" \
+      io.versanode.vncp.proxies='[{"slug":"n8n","port":5678}]'
 
 # ---- Defaults visible to UIs and users ----
 # N8N listens on 5678 by default
@@ -13,9 +14,6 @@ ENV N8N_PORT=5678 \
     # VNCP defaults
     VNCP_INFO_DIR=/vncp \
     VNCP_NAME=vncp-n8n \
-    # Optional: public base (e.g. http://<hostname>)
-    # VNCP_PUBLIC_BASE= \
-    \
     # Optional DB settings (n8n will default to SQLite when unset)
     DB_TYPE=sqlite
 
@@ -58,32 +56,12 @@ RUN set -eux; \
 COPY scripts/vncp-container-info /usr/local/bin/vncp-container-info
 RUN chmod 0755 /usr/local/bin/vncp-container-info
 
-# Healthcheck: when n8n answers locally, publish dashboards JSON into /vncp
-# - Accept 2xx/3xx/401/403 as "responding"
-# - After a good response, invoke the VNCP publisher (ignore publisher errors)
+# Healthcheck: succeed when n8n answers locally (no side effects)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=10 \
   CMD sh -lc ' \
     url="http://127.0.0.1:${N8N_PORT:-5678}"; \
     if curl -skI --connect-timeout 2 --max-time 4 "$url" | grep -qE "HTTP/.* (2..|3..|401|403)"; then \
-      /usr/local/bin/vncp-container-info || true; \
       exit 0; \
     fi; \
     exit 1'
 
-# NOTE:
-# - Map /home/node/.n8n on the host for persistence:
-#     -v n8n_data:/home/node/.n8n
-# - Map /var/lib/vncp on the host to /vncp so VersaNode can read the published JSON:
-#     -v /var/lib/vncp:/vncp
-# - Publish 5678 to your preferred host port:
-#     -p 5678:5678
-#
-# Example run:
-#   docker volume create n8n_data
-#   docker run -d \
-#     --name vncp-n8n \
-#     -p 5678:5678 \
-#     -e GENERIC_TIMEZONE="Europe/Berlin" -e TZ="Europe/Berlin" \
-#     -v n8n_data:/home/node/.n8n \
-#     -v /var/lib/vncp:/vncp \
-#     ghcr.io/versa-node/vncp-n8n:latest

@@ -2,7 +2,8 @@ FROM openhab/openhab:latest
 
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-openhab" \
-      org.opencontainers.image.description="openHAB with VNCP dashboard publisher."
+      org.opencontainers.image.description="openHAB with VNCP dashboard publisher." \
+      io.versanode.vncp.proxies='[{"slug":"openhab","port":8080}]'
 
 # ---- Defaults visible to UIs and users ----
 ENV OPENHAB_HTTP_PORT=8080 \
@@ -46,12 +47,12 @@ RUN chmod 0755 /usr/local/bin/vncp-container-info
 
 # Do NOT 'USER openhab' here; let the base image/entrypoint decide at runtime
 
-# Healthcheck: when openHAB answers locally, publish dashboards JSON into /vncp
+# Healthcheck: succeed when openHAB answers locally (no side effects)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=10 \
   CMD sh -lc 'for url in \
       "https://127.0.0.1:${OPENHAB_HTTPS_PORT:-8443}" \
       "http://127.0.0.1:${OPENHAB_HTTP_PORT:-8080}"; do \
         if curl -skI --connect-timeout 2 --max-time 4 "$url" | grep -qE "HTTP/.* (2..|3..|401|403)"; then \
-          /usr/local/bin/vncp-container-info || true; exit 0; \
+          exit 0; \
         fi; \
       done; exit 1'
