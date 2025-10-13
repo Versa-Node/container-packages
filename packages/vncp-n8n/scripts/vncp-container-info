@@ -5,9 +5,8 @@ INFO_DIR="${VNCP_INFO_DIR:-/vncp}"
 TMP="${INFO_DIR%/}/.vncp-info.json.tmp"
 OUT="${INFO_DIR%/}/vncp-info.json"
 
-CN_NAME="${VNCP_NAME:-$(cat /etc/hostname 2>/dev/null || echo vncp-openhab)}"
-HTTP_PORT="${OPENHAB_HTTP_PORT:-8080}"
-HTTPS_PORT="${OPENHAB_HTTPS_PORT:-8443}"
+CN_NAME="${VNCP_NAME:-$(cat /etc/hostname 2>/dev/null || echo vncp-n8n)}"
+HTTP_PORT="${N8N_PORT:-5678}"
 BASE="${VNCP_PUBLIC_BASE:-}"
 
 http_url() {
