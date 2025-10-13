@@ -10,11 +10,7 @@ ENV OPENHAB_HTTP_PORT=8080 \
     OPENHAB_HTTPS_PORT=8443 \
     CRYPTO_POLICY=unlimited \
     EXTRA_JAVA_OPTS="-Duser.timezone=Europe/Berlin" \
-    VNCP_INFO_DIR=/vncp \
     VNCP_NAME=vncp-openhab
-
-# Document the VNCP location; users can bind-mount /var/lib/vncp -> /vncp
-VOLUME ["/vncp"]
 
 # Document ports (host publishing is done at runtime)
 EXPOSE 8080 8443
@@ -35,17 +31,6 @@ RUN set -eux; \
         echo "WARN: unknown base, curl not installed"; \
       fi; \
     fi
-
-# Ensure VNCP dir exists and is writable by any runtime UID
-RUN set -eux; \
-    mkdir -p /vncp; \
-    chmod -R 0777 /vncp
-
-# ---- VNCP dashboard publisher ----
-COPY scripts/vncp-container-info /usr/local/bin/vncp-container-info
-RUN chmod 0755 /usr/local/bin/vncp-container-info
-
-# Do NOT 'USER openhab' here; let the base image/entrypoint decide at runtime
 
 # Healthcheck: succeed when openHAB answers locally (no side effects)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=10 \

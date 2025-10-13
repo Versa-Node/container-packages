@@ -6,32 +6,24 @@ LABEL org.opencontainers.image.title="vncp-n8n" \
       io.versanode.vncp.proxies='[{"slug":"n8n","port":5678}]'
 
 # ---- Defaults visible to UIs and users ----
-# N8N listens on 5678 by default
+# n8n listens on 5678 by default
 ENV N8N_PORT=5678 \
     GENERIC_TIMEZONE="UTC" \
     TZ="UTC" \
-    \
-    # VNCP defaults
-    VNCP_INFO_DIR=/vncp \
-    VNCP_NAME=vncp-n8n \
-    # Optional DB settings (n8n will default to SQLite when unset)
-    DB_TYPE=sqlite
+    DB_TYPE=sqlite \
+    VNCP_NAME=vncp-n8n
 
-# Document the VNCP location; users can bind-mount /var/lib/vncp -> /vncp
-VOLUME ["/vncp"]
-
-# n8n user data (credentials, encryption key, sqlite DB)
-# NOTE: base image already uses /home/node/.n8n — persist it in compose/run
-# (We declare it explicitly for clarity; Docker will treat it as an anonymous volume if not mapped)
+# Persist n8n user data (credentials, encryption key, sqlite DB)
+# Base image uses /home/node/.n8n — declare for clarity
 VOLUME ["/home/node/.n8n"]
 
-# Expose n8n HTTP port (host publishing is done at runtime)
+# Expose n8n HTTP port (host publishing done at runtime)
 EXPOSE 5678
 
-# Stay root for install/setup; let entrypoint drop privileges as needed
+# Stay root for install/setup; the entrypoint will drop privileges as needed
 USER 0
 
-# Install curl for healthcheck (works on Debian/Alpine variants used by n8n)
+# Install curl for healthcheck (Debian/Alpine compatible)
 RUN set -eux; \
     if ! command -v curl >/dev/null 2>&1; then \
       if command -v apt-get >/dev/null 2>&1; then \
@@ -45,23 +37,7 @@ RUN set -eux; \
       fi; \
     fi
 
-# Ensure VNCP dir exists and is writable by any runtime UID
-RUN set -eux; \
-    mkdir -p /vncp; \
-    chmod -R 0777 /vncp
-
-# ---- VNCP dashboard publisher ----
-# Reuse the same publisher you use in vncp-openhab
-# (expects VNCP_* env; writes /vncp/vncp-info.json with dashboards[])
-COPY scripts/vncp-container-info /usr/local/bin/vncp-container-info
-RUN chmod 0755 /usr/local/bin/vncp-container-info
-
 # Healthcheck: succeed when n8n answers locally (no side effects)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=10 \
-  CMD sh -lc ' \
-    url="http://127.0.0.1:${N8N_PORT:-5678}"; \
-    if curl -skI --connect-timeout 2 --max-time 4 "$url" | grep -qE "HTTP/.* (2..|3..|401|403)"; then \
-      exit 0; \
-    fi; \
-    exit 1'
-
+  CMD sh -lc 'url="http://127.0.0.1:${N8N_PORT:-5678}"; \
+    curl -sfI --connect-timeout 2 --max-time 4 "$url" | grep -qE "HTTP/.* (2..|3..|401|403)"'

@@ -2,16 +2,12 @@ FROM homeassistant/home-assistant:latest
 
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-home-assistant" \
-      org.opencontainers.image.description="Home Assistant home automation platform."
+      org.opencontainers.image.description="Home Assistant home automation platform." \
+      io.versanode.vncp.proxies='[{"slug":"homeassistant","port":8123}]'
 
 # ---- Defaults visible to UIs and users ----
-# HASS_HTTP_PORT is just a friendly alias for clarity in scripts/healthcheck
 ENV HASS_HTTP_PORT=8123 \
-    VNCP_INFO_DIR=/vncp \
     VNCP_NAME=vncp-home-assistant
-
-# Document the VNCP location; users can bind-mount /var/lib/vncp -> /vncp
-VOLUME ["/vncp"]
 
 # Document ports (host publishing is done at runtime)
 EXPOSE 8123
@@ -33,27 +29,10 @@ RUN set -eux; \
       fi; \
     fi
 
-# Ensure VNCP dir exists and is writable by any runtime UID
-RUN set -eux; \
-    mkdir -p /vncp; \
-    chmod -R 0777 /vncp
+# Do NOT change user; base image/entrypoint decides at runtime
 
-# ---- VNCP dashboard publisher ----
-# Expect this script to write a JSON like:
-# { "name": "...", "dashboards": [{ "name": "Home Assistant", "url": "http://<hostname>:8123" }], ... }
-# into $VNCP_INFO_DIR (default /vncp)
-COPY scripts/vncp-container-info /usr/local/bin/vncp-container-info
-RUN chmod 0755 /usr/local/bin/vncp-container-info
-
-# Do NOT change the user here; let the base image decide at runtime
-# USER will be set by the Home Assistant image/entrypoint as appropriate
-
-# Healthcheck: when HA answers locally, publish dashboards JSON into /vncp
+# Healthcheck: verify Home Assistant responds locally
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=10 \
-  CMD sh -lc ' \
-    url="http://127.0.0.1:${HASS_HTTP_PORT:-8123}"; \
-    if curl -sfI --connect-timeout 2 --max-time 4 "$url" | grep -qE "HTTP/.* (2..|3..|401|403)"; then \
-      /usr/local/bin/vncp-container-info || true; \
-      exit 0; \
-    fi; \
-    exit 1'
+  CMD sh -lc 'url="http://127.0.0.1:${HASS_HTTP_PORT:-8123}"; \
+    curl -sfI --connect-timeout 2 --max-time 4 "$url" | \
+    grep -qE "HTTP/.* (2..|3..|401|403)"'
