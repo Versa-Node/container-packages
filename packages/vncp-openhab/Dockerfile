@@ -1,20 +1,12 @@
 ################################################################################
 # Image:   ghcr.io/versa-node/vncp-openhab
-# Purpose: openHAB with VNCP metadata AND an optional subpath prefix rewriter
+# Purpose: openHAB with VNCP metadata + auto subpath rewriter + dynamic healthcheck
 #
-# What this does
-#  - Exposes openHAB as usual (8080/8443)
-#  - Adds label io.versanode.vncp.proxies with slug/port/path/etc.
-#  - Duplicates that label JSON into ENV VNCP_PROXIES so the runtime can read it
-#  - On container start, only if VNCP_PROXIES contains an entry with port==8080,
-#    it parses that entry’s "path" (or falls back to "/<slug>") and runs a tiny
-#    asset-prefix rewriter that changes absolute refs like href="/..." or
-#    src="/..." to href="/<path>/..." / src="/<path>/...".
-#  - The rewriter is idempotent (won’t double-prefix) and runs once per boot.
-#
-# Prefer the official way for openHAB subpath:
-#    -e OPENHAB_HTTP_CONTEXT_PATH=/openhab
-# If you can set that, the rewriter will still be safe but unnecessary.
+# Features:
+#  - Detects io.versanode.vncp.proxies (mirrored into $VNCP_PROXIES)
+#  - If port=8080, prefixes all /href and /src links with the .path (e.g. /openhab)
+#  - Healthcheck dynamically tests http://127.0.0.1/<slug> if port=8080 is present
+#  - Idempotent and safe across restarts
 ################################################################################
 
 FROM openhab/openhab:latest
@@ -68,17 +60,14 @@ RUN set -eux; \
 # It uses the entry's "path" when present, else "/<slug>"
 COPY scripts/vncp-prefix-rewrite /usr/local/bin/vncp-prefix-rewrite
 COPY scripts/vncp-start           /usr/local/bin/vncp-start
-RUN chmod 0755 /usr/local/bin/vncp-prefix-rewrite /usr/local/bin/vncp-start
+COPY scripts/vncp-healthcheck /usr/local/bin/vncp-healthcheck
+
+RUN chmod 0755 /usr/local/bin/vncp-prefix-rewrite /usr/local/bin/vncp-start /usr/local/bin/vncp-healthcheck
 
 # Use our start shim as entrypoint; it will exec the base entrypoint afterward
 ENTRYPOINT ["/usr/local/bin/vncp-start"]
 
-# Healthcheck: succeed when openHAB answers locally (no side effects)
+# --- Dynamic Healthcheck ---
+# Checks /<slug> if port=8080 exists, else default / on localhost
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=10 \
-  CMD sh -lc 'for url in \
-      "https://127.0.0.1:${OPENHAB_HTTPS_PORT:-8443}" \
-      "http://127.0.0.1:${OPENHAB_HTTP_PORT:-8080}"; do \
-        if curl -skI --connect-timeout 2 --max-time 4 "$url" | grep -qE "HTTP/.* (2..|3..|401|403)"; then \
-          exit 0; \
-        fi; \
-      done; exit 1'
+  CMD /usr/local/bin/vncp-healthcheck
