@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run-time gate: only rewrite if VNCP_PROXIES includes an item with port==8080.
+# Prefix taken from .path when present, else "/<slug>".
+should_rewrite=0
+prefix=""
+if command -v jq >/dev/null 2>&1 && [[ -n "${VNCP_PROXIES:-}" ]]; then
+  # Pick first item with port==8080
+  item="$(printf '%s' "$VNCP_PROXIES" | jq -r '[.[] | select(.port == 8080)][0] // empty')" || true
+  if [[ -n "$item" && "$item" != "null" ]]; then
+    p="$(printf '%s' "$item" | jq -r '.path // empty' || true)"
+    if [[ -z "$p" || "$p" == "null" ]]; then
+      s="$(printf '%s' "$item" | jq -r '.slug // empty' || true)"
+      if [[ -n "$s" && "$s" != "null" ]]; then p="/${s}"; fi
+    fi
+    if [[ -n "$p" && "$p" != "null" ]]; then
+      # normalize prefix: ensure leading slash, remove trailing slash
+      case "$p" in /*) prefix="$p" ;; *) prefix="/$p" ;; esac
+      prefix="${prefix%/}"
+      should_rewrite=1
+    fi
+  fi
+fi
+
+# Stamp file so we don’t rewrite on every restart (idempotence)
+STAMP_DIR="/var/lib/vncp"
+STAMP_FILE="${STAMP_DIR}/prefix_rewrite.done"
+mkdir -p "$STAMP_DIR"
+
+if [[ "$should_rewrite" -eq 1 && ! -f "$STAMP_FILE" ]]; then
+  echo "[vncp-start] Running prefix rewrite for prefix: $prefix"
+  VNCP_PREFIX="$prefix" /usr/local/bin/vncp-prefix-rewrite || true
+  date -u +"%FT%TZ" > "$STAMP_FILE"
+else
+  echo "[vncp-start] Skipping prefix rewrite (should_rewrite=$should_rewrite, stamp exists=$( [[ -f $STAMP_FILE ]] && echo yes || echo no ))"
+fi
+
+# Chain to the base image's entrypoint if present; otherwise start openhab
+if [[ -x /entrypoint ]]; then
+  exec /entrypoint "$@"
+else
+  # Fallback to openHAB launcher; adjust if the base image expects a different launcher
+  if command -v su-exec >/dev/null 2>&1; then
+    exec su-exec openhab /usr/bin/openhab "$@"
+  else
+    exec /usr/bin/openhab "$@"
+  fi
+fi

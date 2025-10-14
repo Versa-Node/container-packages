@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Rewrites absolute asset URLs so they include a subpath prefix.
+# Example: with VNCP_PREFIX=/openhab, changes:
+#   href="/css/app.css"  -> href="/openhab/css/app.css"
+#   src="/js/app.js"     -> src="/openhab/js/app.js"
+# Idempotent: won’t double-prefix; runs once per container boot (gated by start shim).
+set -euo pipefail
+
+prefix="${VNCP_PREFIX:-${1:-}}"
+[[ -z "$prefix" ]] && { echo "vncp-prefix-rewrite: VNCP_PREFIX not set; exiting"; exit 0; }
+case "$prefix" in /*) : ;; *) prefix="/$prefix" ;; esac
+prefix="${prefix%/}"
+
+# Tunables: where to scan and which files to touch
+SCAN_DIRS=(${VNCP_SCAN_DIRS:-/usr/share /opt /var/www /srv})
+FILE_GLOBS=${VNCP_FILE_GLOBS:-"*.html *.htm *.css *.js *.json"}
+
+echo "vncp-prefix-rewrite: prefix=$prefix scan_dirs=${SCAN_DIRS[*]} globs=$FILE_GLOBS"
+
+# Escape prefix for sed
+pref_esc="$(printf '%s' "$prefix" | sed 's/[.[\*^$(){}|+?\/]/\\&/g')"
+
+shopt -s nullglob globstar
+count=0
+for dir in "${SCAN_DIRS[@]}"; do
+  [[ -d "$dir" ]] || continue
+  # Build find predicate for globs
+  pred="$(printf ' -name "%s" -o' $FILE_GLOBS | sed 's/ -o$//')"
+  while IFS= read -r -d '' f; do
+    # skip symlinks and large/binary files and common caches
+    [[ -L "$f" ]] && continue
+    case "$f" in */node_modules/*|*/.cache/*|*/cache/*) continue ;; esac
+    # only attempt on text-y files that contain absolute refs
+    if grep -Iq . "$f" && grep -Eqs 'href="/|src="/' "$f"; then
+      # Protect already-prefixed refs, insert new prefixes, then restore.
+      sed -i -E \
+        -e "s|href=\"${pref_esc}/|href=\"__KEEP__/|g" \
+        -e "s|src=\"${pref_esc}/|src=\"__KEEP__/|g" \
+        -e 's|href="/|href="__INS__/|g' \
+        -e 's|src="/|src="__INS__/|g' \
+        -e "s|__INS__|${pref_esc}/|g" \
+        -e "s|__KEEP__|${pref_esc}|g" \
+        "$f" && count=$((count+1))
+    fi
+  done < <(eval "find \"$dir\" -type f -size -5M \\( $pred \\) -print0")
+done
+
+echo "vncp-prefix-rewrite: patched files: $count"
