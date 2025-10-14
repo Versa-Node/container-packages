@@ -3,7 +3,8 @@ FROM openhab/openhab:latest
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-openhab" \
       org.opencontainers.image.description="openHAB with VNCP dashboard publisher." \
-      io.versanode.vncp.proxies='[{"slug":"openhab","port":8080,"path":"/openhab","strip_prefix":true,"rewrite":{"prefix_html":true,"prefix_attrs":["href","src","action"],"prefix_css_url":true},"set_cookies":["X-OPENHAB-BASEURL=/openhab; Path=/; SameSite=Lax","X-OPENHAB-AUTH-HEADER=1; Path=/; SameSite=Lax"],"headers":{"proxy_set":["Authorization:"]}}]'
+      io.versanode.vncp.proxies='[{"slug":"openhab","port":8080,"nginx_block":"location = ${PATH} { return 308 ${PATH}/; }\nlocation ^~ ${PATH}/ {\n    rewrite ^${PATH}/(.*)$ /$1 break;\n    proxy_http_version 1.1;\n    proxy_set_header Upgrade $http_upgrade;\n    proxy_set_header Connection $connection_upgrade;\n    proxy_set_header Host $host;\n    proxy_set_header X-Real-IP $remote_addr;\n    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n    proxy_set_header X-Forwarded-Proto $scheme;\n    sub_filter_once off;\n    sub_filter_types text/html text/css application/javascript application/json text/plain;\n    sub_filter \'href=\"/\' \'href=\"${PATH}/\';\n    sub_filter \'src=\"/\'  \'src=\"${PATH}/\';\n    sub_filter \'action=\"/\' \'action=\"${PATH}/\';\n    sub_filter \'url(/\' \'url(${PATH}/\';\n    proxy_pass ${UPSTREAM};\n}"}]'
+
 
 # ---- Defaults visible to UIs and users ----
 ENV OPENHAB_HTTP_PORT=8080 \
