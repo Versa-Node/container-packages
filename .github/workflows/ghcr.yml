@@ -322,13 +322,19 @@ jobs:
             # --- NEW: load vncp-proxies.json -> --build-arg VNCP_PROXIES=... (escape $ to $$) ---
             BUILD_ARGS=( )
             PROX_FILE="${pkg}/vncp-proxies.json"
-            if [[ -f "${PROX_FILE}" ]]; then
-              echo "Found ${PROX_FILE}; injecting into label via ARG VNCP_PROXIES"
-              raw_json="$(cat "${PROX_FILE}")"
-              json_escaped="${raw_json//$/\$\$}"
-              BUILD_ARGS+=( --build-arg "VNCP_PROXIES=${json_escaped}" )
+            if [[ -f "$PROX_FILE" ]]; then
+              echo "Found $PROX_FILE; injecting into label via ARG VNCP_PROXIES"
+
+              # 1) Make sure the JSON is compact and valid
+              raw_json="$(jq -c . "$PROX_FILE")"
+
+              # 2) Escape only $ that are NOT starting a ${...} placeholder.
+              #    This turns $host -> $$host, but leaves ${PATH} intact.
+              escaped_dollars="$(printf '%s' "$raw_json" | sed -E 's/\$([^{])/$$\1/g')"
+
+              # 3) Pass as build-arg (no single-quoting that would inject '\'' garbage)
+              BUILD_ARGS+=( --build-arg "VNCP_PROXIES=$escaped_dollars" )
             else
-              # Optional: keep empty default "[]"
               BUILD_ARGS+=( --build-arg 'VNCP_PROXIES=[]' )
             fi
 

@@ -6,7 +6,8 @@ LABEL org.opencontainers.image.title="vncp-openhab" \
 
 # Pass proxies as argument
 ARG VNCP_PROXIES=[]
-LABEL io.versanode.vncp.proxies=$VNCP_PROXIES
+# Double quotes keep it a single string; value is already valid JSON.
+LABEL io.versanode.vncp.proxies="${VNCP_PROXIES}"
 
 # ---- Defaults visible to UIs and users ----
 ENV OPENHAB_HTTP_PORT=8080 \
