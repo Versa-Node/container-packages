@@ -47,7 +47,19 @@ RUN chmod 0755 /usr/local/bin/vncp-prefix-rewrite /usr/local/bin/vncp-start /usr
 ENTRYPOINT ["/usr/local/bin/vncp-start"]
 CMD ["tini","-s","./start.sh"]
 
+
+# HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=10 \
+#   CMD /usr/local/bin/vncp-healthcheck
+
 # --- Dynamic Healthcheck ---
 # Checks /<slug> if port=8080 exists, else default / on localhost
+
+# Healthcheck: succeed when openHAB answers locally (no side effects)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=10 \
-  CMD /usr/local/bin/vncp-healthcheck
+  CMD sh -lc 'for url in \
+      "https://127.0.0.1:${OPENHAB_HTTPS_PORT:-8443}" \
+      "http://127.0.0.1:${OPENHAB_HTTP_PORT:-8080}"; do \
+        if curl -skI --connect-timeout 2 --max-time 4 "$url" | grep -qE "HTTP/.* (2..|3..|401|403)"; then \
+          exit 0; \
+        fi; \
+      done; exit 1'
