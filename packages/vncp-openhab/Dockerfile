@@ -3,7 +3,7 @@ FROM openhab/openhab:latest
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-openhab" \
       org.opencontainers.image.description="openHAB with VNCP dashboard publisher." \
-      io.versanode.vncp.proxies='[{"slug":"openhab","port":8080}]'
+      io.versanode.vncp.proxies='[{"slug":"openhab","port":8080,"path":"/openhab","set_cookies":["X-OPENHAB-BASEURL=/openhab; Path=/"]}]'
 
 # ---- Defaults visible to UIs and users ----
 ENV OPENHAB_HTTP_PORT=8080 \
