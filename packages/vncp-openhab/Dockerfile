@@ -60,9 +60,9 @@ RUN set -eux; \
 # It uses the entry's "path" when present, else "/<slug>"
 COPY scripts/vncp-prefix-rewrite /usr/local/bin/vncp-prefix-rewrite
 COPY scripts/vncp-start           /usr/local/bin/vncp-start
-COPY scripts/vncp-healthcheck /usr/local/bin/vncp-healthcheck
+COPY scripts/vncp-health-check /usr/local/bin/vncp-health-check
 
-RUN chmod 0755 /usr/local/bin/vncp-prefix-rewrite /usr/local/bin/vncp-start /usr/local/bin/vncp-healthcheck
+RUN chmod 0755 /usr/local/bin/vncp-prefix-rewrite /usr/local/bin/vncp-start /usr/local/bin/vncp-health-check
 
 # Use our start shim as entrypoint; it will exec the base entrypoint afterward
 ENTRYPOINT ["/usr/local/bin/vncp-start"]
@@ -70,4 +70,4 @@ ENTRYPOINT ["/usr/local/bin/vncp-start"]
 # --- Dynamic Healthcheck ---
 # Checks /<slug> if port=8080 exists, else default / on localhost
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=10 \
-  CMD /usr/local/bin/vncp-healthcheck
+  CMD /usr/local/bin/vncp-health-check
