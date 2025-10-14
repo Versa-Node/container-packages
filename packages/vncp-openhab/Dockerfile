@@ -45,6 +45,7 @@ COPY scripts/vncp-healthcheck /usr/local/bin/vncp-healthcheck
 RUN chmod 0755 /usr/local/bin/vncp-prefix-rewrite /usr/local/bin/vncp-start /usr/local/bin/vncp-healthcheck
 
 ENTRYPOINT ["/usr/local/bin/vncp-start"]
+CMD ["tini","-s","./start.sh"]
 
 # --- Dynamic Healthcheck ---
 # Checks /<slug> if port=8080 exists, else default / on localhost
