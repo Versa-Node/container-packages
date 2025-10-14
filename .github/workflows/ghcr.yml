@@ -1,7 +1,6 @@
 # ------------------------------------------------------------------------------
 # Publish packages to GHCR (versa-node/*)
 # ------------------------------------------------------------------------------
-
 name: Publish packages to GHCR
 
 on:
@@ -271,14 +270,18 @@ jobs:
               echo 'ARG BASE_IMAGE'
               echo 'ARG BASE_USER=root'
               echo 'ARG VNCP_DIR=/usr/share/versanode'
+              echo 'ARG VNCP_PROXIES="[]"'           # <--- DEFAULT ARG
               echo 'FROM ${BASE_IMAGE}'
               echo 'ARG VNCP_DIR'
               echo 'ARG BASE_USER'
+              echo 'ARG VNCP_PROXIES'
               echo 'USER 0'
               echo 'RUN install -d -m 0755 "${VNCP_DIR}"'
               echo 'COPY --chmod=0644 vncp.config.yaml "${VNCP_DIR}/vncp.config.yaml"'
               echo 'COPY --chmod=0644 README.md        "${VNCP_DIR}/README.md"'
               echo 'RUN chmod 0644 "${VNCP_DIR}/vncp.config.yaml" "${VNCP_DIR}/README.md"'
+              # Apply proxies label from ARG (value is $-escaped in the workflow)
+              echo 'LABEL io.versanode.vncp.proxies="${VNCP_PROXIES}"'
               echo 'USER ${BASE_USER}'
             } > "$WRAP_DOCKERFILE"
 
@@ -298,13 +301,9 @@ jobs:
             README_FILE="${pkg}/README.md"
             ENC_LABEL_PREFIX="io.versanode.vncp.readme"
 
-            # note: base64 w/ no newlines; `-w0` on GNU, `-b0` on macOS; ubuntu-latest uses GNU
             README_B64="$(base64 -w0 "${README_FILE}")"
-
-            # choose a safe chunk size to keep label values well under typical limits
             CHUNK_SIZE=7000
 
-            # Split into chunks if needed
             LABELS+=( --label "${ENC_LABEL_PREFIX}.encoding=b64,utf8" )
             LABELS+=( --label "${ENC_LABEL_PREFIX}.path=${VNCP_DIR}/README.md" )
 
@@ -319,6 +318,20 @@ jobs:
               done
               LABELS+=( --label "${ENC_LABEL_PREFIX}.parts=$i" )
             fi
+
+            # --- NEW: load vncp-proxies.json -> --build-arg VNCP_PROXIES=... (escape $ to $$) ---
+            BUILD_ARGS=( )
+            PROX_FILE="${pkg}/vncp-proxies.json"
+            if [[ -f "${PROX_FILE}" ]]; then
+              echo "Found ${PROX_FILE}; injecting into label via ARG VNCP_PROXIES"
+              raw_json="$(cat "${PROX_FILE}")"
+              json_escaped="${raw_json//$/\$\$}"
+              BUILD_ARGS+=( --build-arg "VNCP_PROXIES=${json_escaped}" )
+            else
+              # Optional: keep empty default "[]"
+              BUILD_ARGS+=( --build-arg 'VNCP_PROXIES=[]' )
+            fi
+
             docker buildx build \
               --provenance=false --sbom=false \
               --cache-from "${CACHE_FROM}" --cache-to "${CACHE_TO}" \
@@ -326,6 +339,7 @@ jobs:
               --build-arg "BASE_IMAGE=ghcr.io/${ORG}/${name}:${RAW_TAG}" \
               --build-arg "BASE_USER=${BASE_USER}" \
               --build-arg "VNCP_DIR=${VNCP_DIR}" \
+              "${BUILD_ARGS[@]}" \
               -f "$WRAP_DOCKERFILE" \
               "${LABELS[@]}" \
               -t "ghcr.io/${ORG}/${name}:${TAG}" \
