@@ -5,8 +5,8 @@ LABEL org.opencontainers.image.title="vncp-openhab" \
       org.opencontainers.image.description="openHAB with VNCP dashboard publisher." 
 
 # Pass proxies as argument
-ARG VNCP_PROXIES="[]"
-LABEL io.versanode.vncp.proxies="$VNCP_PROXIES"
+ARG VNCP_PROXIES=[]
+LABEL io.versanode.vncp.proxies=$VNCP_PROXIES
 
 # ---- Defaults visible to UIs and users ----
 ENV OPENHAB_HTTP_PORT=8080 \
