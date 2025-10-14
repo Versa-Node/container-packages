@@ -3,7 +3,7 @@ FROM openhab/openhab:latest
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-openhab" \
       org.opencontainers.image.description="openHAB with VNCP dashboard publisher." \
-      LABEL io.versanode.vncp.proxies='[
+      io.versanode.vncp.proxies='[
         {
           "slug":"openhab",
           "port":8080,
