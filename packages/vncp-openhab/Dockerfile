@@ -33,14 +33,19 @@ RUN set -eux; \
     fi
 
 # Provide a default network.cfg inside the image.
-# NOTE: If you later bind-mount /openhab/conf, your host files will override/hide this.
+# NOTE: If you later bind-mount /openhab/conf, the host file will override this.
 RUN set -eux; \
     mkdir -p /openhab/conf/services; \
     cat > /openhab/conf/services/network.cfg <<EOF
-baseURL = ${OPENHAB_PUBLIC_BASE_URL}
-/* Make openHAB trust/consume X-Forwarded-* headers from the proxy */
+# Tell openHAB what public URL it should use for absolute links & redirects
+baseURL = ${OPENHAB_PUBLIC_BASE_URL:-http://localhost/openhab}
+
+# Make openHAB trust/consume X-Forwarded-* headers from the proxy
 useHTTPXForwardedHeaders = true
-EOF
+EOF \
+    && chmod 0644 /openhab/conf/services/network.cfg \
+    && { getent passwd openhab >/dev/null 2>&1 && chown -R openhab:openhab /openhab/conf || echo "openhab user not found at build; skipping chown"; }
+
 # Ensure ownership matches the base image user
 RUN chown -R openhab:openhab /openhab/conf
 
