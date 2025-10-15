@@ -2,7 +2,8 @@ FROM openhab/openhab:latest
 
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-openhab" \
-      org.opencontainers.image.description="openHAB with VNCP dashboard publisher."
+      org.opencontainers.image.description="openHAB with VNCP dashboard publisher." \
+      io.versanode.vncp.network="host" 
 
 # Pass proxies as argument (kept as-is)
 ARG VNCP_PROXIES=[]
