@@ -4,23 +4,25 @@ FROM openhab/openhab:latest
 LABEL org.opencontainers.image.title="vncp-openhab" \
       org.opencontainers.image.description="openHAB with VNCP dashboard publisher."
 
-# VNCP label as before
+# Pass proxies as argument (kept as-is)
 ARG VNCP_PROXIES=[]
 LABEL io.versanode.vncp.proxies="${VNCP_PROXIES}"
 
-# Defaults
+# ---- Defaults visible to UIs and users ----
 ENV OPENHAB_HTTP_PORT=8080 \
     OPENHAB_HTTPS_PORT=8443 \
     CRYPTO_POLICY=unlimited \
     EXTRA_JAVA_OPTS="-Duser.timezone=Europe/Berlin" \
-    VNCP_NAME=vncp-openhab
+    VNCP_NAME=vncp-openhab \
+    # Optional: override at build time to bake the external URL
+    OPENHAB_PUBLIC_BASE_URL="http://localhost/openhab"
 
-# (Optional) let you override at build time
-ARG PUBLIC_BASE_URL="http://localhost/openhab"
-ENV OPENHAB_PUBLIC_BASE_URL="${PUBLIC_BASE_URL}"
+EXPOSE 8080 8443
 
-# Install curl (unchanged)
+# Stay root for install/setup; don't switch to 'openhab' here
 USER 0
+
+# Install curl for healthcheck (covers both Debian and Alpine variants)
 RUN set -eux; \
     if ! command -v curl >/dev/null 2>&1; then \
       if command -v apt-get >/dev/null 2>&1; then \
@@ -29,27 +31,32 @@ RUN set -eux; \
         rm -rf /var/lib/apt/lists/*; \
       elif command -v apk >/dev/null 2>&1; then \
         apk add --no-cache curl ca-certificates; \
+      else \
+        echo "WARN: unknown base, curl not installed"; \
       fi; \
     fi
 
 # Provide a default network.cfg inside the image.
-# NOTE: If you later bind-mount /openhab/conf, the host file will override this.
+# NOTE: If you bind-mount /openhab/conf on the host, that will override this.
 RUN set -eux; \
     mkdir -p /openhab/conf/services; \
-    cat > /openhab/conf/services/network.cfg <<EOF
+    cat >/openhab/conf/services/network.cfg <<EOF
 # Tell openHAB what public URL it should use for absolute links & redirects
-baseURL = ${OPENHAB_PUBLIC_BASE_URL:-http://localhost/openhab}
+baseURL = ${OPENHAB_PUBLIC_BASE_URL}
 
 # Make openHAB trust/consume X-Forwarded-* headers from the proxy
 useHTTPXForwardedHeaders = true
-EOF \
-    && chmod 0644 /openhab/conf/services/network.cfg \
-    && { getent passwd openhab >/dev/null 2>&1 && chown -R openhab:openhab /openhab/conf || echo "openhab user not found at build; skipping chown"; }
+EOF
+# set perms and chown only if the 'openhab' user exists in this variant
+RUN set -eux; \
+    chmod 0644 /openhab/conf/services/network.cfg; \
+    if getent passwd openhab >/dev/null 2>&1; then \
+      chown -R openhab:openhab /openhab/conf; \
+    else \
+      echo "openhab user not found at build; skipping chown"; \
+    fi
 
-# Ensure ownership matches the base image user
-RUN chown -R openhab:openhab /openhab/conf
-
-# Healthcheck (unchanged)
+# Healthcheck: succeed when openHAB answers locally (no side effects)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=10 \
   CMD sh -lc 'for url in \
       "https://127.0.0.1:${OPENHAB_HTTPS_PORT:-8443}" \
