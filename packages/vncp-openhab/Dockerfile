@@ -37,26 +37,6 @@ RUN set -eux; \
       fi; \
     fi
 
-# Provide a default network.cfg inside the image.
-# NOTE: If you bind-mount /openhab/conf on the host, that will override this.
-RUN set -eux; \
-    mkdir -p /openhab/conf/services; \
-    cat >/openhab/conf/services/network.cfg <<EOF
-# Tell openHAB what public URL it should use for absolute links & redirects
-baseURL = ${OPENHAB_PUBLIC_BASE_URL}
-
-# Make openHAB trust/consume X-Forwarded-* headers from the proxy
-useHTTPXForwardedHeaders = true
-EOF
-# set perms and chown only if the 'openhab' user exists in this variant
-RUN set -eux; \
-    chmod 0644 /openhab/conf/services/network.cfg; \
-    if getent passwd openhab >/dev/null 2>&1; then \
-      chown -R openhab:openhab /openhab/conf; \
-    else \
-      echo "openhab user not found at build; skipping chown"; \
-    fi
-
 # Healthcheck: succeed when openHAB answers locally (no side effects)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=10 \
   CMD sh -lc 'for url in \
