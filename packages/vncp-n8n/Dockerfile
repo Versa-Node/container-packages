@@ -11,26 +11,16 @@ LABEL io.versanode.vncp.proxies="${VNCP_PROXIES}"
 
 # ---- Defaults visible to UIs and users ----
 ENV \
-  N8N_PORT=5678 \
-  GENERIC_TIMEZONE="UTC" \
-  TZ="UTC" \
-  DB_TYPE=sqlite \
-  VNCP_NAME=vncp-n8n \
-  \
-  # Path-based reverse proxy (served at https://<host>/n8n/)
-  N8N_PATH="/n8n" \
+  N8N_PATH="/n8n/" \
   N8N_PROTOCOL="https" \
   N8N_HOST="localhost" \
-  \
-  # Public URLs seen by users/webhooks
   N8N_EDITOR_BASE_URL="https://localhost/n8n/" \
   WEBHOOK_URL="https://localhost/n8n/" \
   WEBHOOK_TUNNEL_URL="https://localhost/n8n/" \
-  \
-  # Endpoints are relative to N8N_PATH (keep defaults)
   N8N_ENDPOINT_REST="/rest" \
   N8N_ENDPOINT_WEBHOOK="/webhook" \
   N8N_ENDPOINT_WEBHOOK_TEST="/webhook-test"
+
 
 VOLUME ["/home/node/.n8n"]
 EXPOSE 5678
