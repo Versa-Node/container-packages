@@ -2,8 +2,7 @@ FROM n8nio/n8n:latest
 
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-n8n" \
-      org.opencontainers.image.description="n8n workflow automation platform" \
-
+      org.opencontainers.image.description="n8n workflow automation platform" 
       
 # Workflow passes proxies as argument
 ARG VNCP_PROXIES=[]
