@@ -3,8 +3,7 @@ FROM n8nio/n8n:latest
 
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-n8n" \
-      org.opencontainers.image.description="n8n workflow automation platform" \
-      io.versanode.vncp.network="host"
+      org.opencontainers.image.description="n8n workflow automation platform"
 
 # Workflow passes proxies as argument
 ARG VNCP_PROXIES=[]
@@ -20,14 +19,14 @@ ENV N8N_PORT=5678 \
     \
     # ---- Path-based reverse proxy config ----
     # IMPORTANT: trailing slash is required
-    N8N_PATH="/n8n/" \
+    N8N_PATH="/n8n" \
     N8N_PROTOCOL="https" \
-    N8N_HOST="versanode" \
+    N8N_HOST="localhost" \
     \
     # Editor + webhook base URLs arrive through the proxy at /n8n/
-    N8N_EDITOR_BASE_URL="https://versanode/n8n/" \
-    WEBHOOK_URL="https://versanode/n8n/" \
-    WEBHOOK_TUNNEL_URL="https://versanode/n8n/" \
+    N8N_EDITOR_BASE_URL="https://localhost/n8n/" \
+    WEBHOOK_URL="https://localhost/n8n/" \
+    WEBHOOK_TUNNEL_URL="https://localhost/n8n/" \
     \
     # Endpoints are relative to N8N_PATH – do NOT prefix with /n8n
     N8N_ENDPOINT_REST="/rest" \
