@@ -3,12 +3,11 @@ FROM n8nio/n8n:latest
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-n8n" \
       org.opencontainers.image.description="n8n workflow automation platform" \
-      io.versanode.vncp.network="host" 
+      io.versanode.vncp.network="host"
 
 # Workflow passes proxies as argument
 ARG VNCP_PROXIES=[]
 LABEL io.versanode.vncp.proxies="${VNCP_PROXIES}"
-
 
 # ---- Defaults visible to UIs and users ----
 # n8n listens on 5678 by default
@@ -16,7 +15,18 @@ ENV N8N_PORT=5678 \
     GENERIC_TIMEZONE="UTC" \
     TZ="UTC" \
     DB_TYPE=sqlite \
-    VNCP_NAME=vncp-n8n
+    VNCP_NAME=vncp-n8n \
+    \
+    # ---- Path-based reverse proxy config ----
+    N8N_PATH="/n8n" \
+    N8N_PROTOCOL="https" \
+    N8N_HOST="localhost" \
+    WEBHOOK_URL="https://localhost/n8n/" \
+    WEBHOOK_TUNNEL_URL="https://localhost/n8n/" \
+    N8N_ENDPOINT_REST="/n8n/rest" \
+    N8N_ENDPOINT_WEBHOOK="/n8n/webhook" \
+    N8N_ENDPOINT_WEBHOOK_TEST="/n8n/webhook-test" \
+    N8N_EDITOR_BASE_URL="https://localhost/n8n/"
 
 # Persist n8n user data (credentials, encryption key, sqlite DB)
 # Base image uses /home/node/.n8n — declare for clarity
