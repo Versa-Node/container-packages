@@ -14,7 +14,8 @@ ENV N8N_PORT=5678 \
     GENERIC_TIMEZONE="UTC" \
     TZ="UTC" \
     DB_TYPE=sqlite \
-    VNCP_NAME=vncp-n8n
+    VNCP_NAME=vncp-n8n \
+    N8N_SECURE_COOKIE=false
 
 # Persist n8n user data (credentials, encryption key, sqlite DB)
 VOLUME ["/home/node/.n8n"]
