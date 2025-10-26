@@ -5,7 +5,7 @@ LABEL org.opencontainers.image.title="vncp-openhab" \
       org.opencontainers.image.description="openHAB with VNCP dashboard publisher." \
       io.versanode.vncp.network="host" 
 
-# Pass proxies as argument (kept as-is)
+# Workflow passes proxies as argument
 ARG VNCP_PROXIES=[]
 LABEL io.versanode.vncp.proxies="${VNCP_PROXIES}"
 
