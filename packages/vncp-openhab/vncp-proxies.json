@@ -1,6 +1,6 @@
 [
   {
-    "slug": "HABPanel",
+    "slug": "openhab",
     "port": 8080,
     "nginx_block": "location = ${PATH} { return 308 ${PATH}/; }\n\n# Redirect everything under the slug to the real port on this host\nlocation ^~ ${PATH}/ {\n    # External redirect: /openhab/whatever -> http://$host:${UPSTREAM_PORT}/whatever\n    rewrite ^${PATH}/(.*)$ http://$host:${UPSTREAM_PORT}/$1 permanent;\n}\n"
   }
