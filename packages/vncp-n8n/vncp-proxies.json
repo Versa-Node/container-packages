@@ -2,6 +2,6 @@
   {
     "slug": "n8n",
     "port": 5678,
-    "nginx_block": "location = ${PATH} { return 308 ${PATH}/; }\n\nlocation ^~ ${PATH}/ {\n    rewrite ^${PATH}/(.*)$ /$1 break;\n    return 308 http://127.0.0.1:${UPSTREAM_PORT}$uri$is_args$args;\n}\n"
+    "nginx_block": "location = ${PATH} { return 308 ${PATH}/; }\n\nlocation ^~ ${PATH}/ {\n    rewrite ^${PATH}/(.*)$ /$1 break;\n    return 308 http://$server_addr:${UPSTREAM_PORT}$uri$is_args$args;\n}\n"
   }
 ]
