@@ -1,6 +1,7 @@
 # ------------------------------------------------------------------------------
-# Build stage: build 4diac FORTE with SysFs (Raspberry Pi GPIO support)
+# Build stage: build 4diac FORTE with SysFs, ETH, HTTP, etc.
 # ------------------------------------------------------------------------------
+
 FROM debian:trixie-slim AS forte-builder
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -22,18 +23,23 @@ ARG FORTE_BRANCH=release
 RUN git clone --depth 1 --branch "${FORTE_BRANCH}" \
       https://github.com/eclipse-4diac/4diac-forte.git ./
 
-# Configure & build FORTE for POSIX with SysFs and Ethernet com layer
+# Configure & build FORTE for POSIX with SysFs and modules similar to buildForte.sh
 RUN set -eux; \
   mkdir -p build && cd build; \
   cmake -G "Unix Makefiles" \
     -DCMAKE_BUILD_TYPE=Release \
+    -DFORTE_BUILD_EXECUTABLE=ON \
+    -DFORTE_LOGLEVEL=Debug \
     -DFORTE_ARCHITECTURE=Posix \
     -DFORTE_MODULE_SysFs=ON \
     -DFORTE_COM_ETH=ON \
     -DFORTE_COM_LOCAL=ON \
-    -DFORTE_MODULE_CONVERT=ON \
     -DFORTE_MODULE_UTILS=ON \
+    -DFORTE_MODULE_CONVERT=ON \
     -DFORTE_MODULE_IEC61131=ON \
+    -DFORTE_MODULE_Arrowhead=ON \
+    -DFORTE_COM_HTTP=ON \
+    -DFORTE_COM_HTTP_LISTENING_PORT=8080 \
     ..; \
   make -j"$(nproc)"; \
   make install DESTDIR=/usr/forte_root
@@ -41,13 +47,14 @@ RUN set -eux; \
 # ------------------------------------------------------------------------------
 # Runtime stage: vncp-4diac
 # ------------------------------------------------------------------------------
+
 FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-4diac" \
-      org.opencontainers.image.description="Eclipse 4diac FORTE runtime (IEC 61499) with Raspberry Pi SysFs support" \
+      org.opencontainers.image.description="Eclipse 4diac FORTE runtime (IEC 61499) with SysFs and HTTP/ETH communication" \
       io.versanode.vncp.network="versanode"
 
 # ---- Defaults visible to UIs and users ----
@@ -75,8 +82,11 @@ RUN set -eux; \
 
 VOLUME ["/usr/forte_boot"]
 
-# 4diac FORTE management & optional extra port
-EXPOSE 61499 61500
+# 4diac FORTE management + some extra ports
+#  - 61499: management / deployment (main one you care about)
+#  - 61500: free extra (matching their example)
+#  - 8080: HTTP com layer (FORTE_COM_HTTP_LISTENING_PORT)
+EXPOSE 61499 61500 8080
 
 # Stay root; orchestrator / entrypoint can drop privileges if needed
 USER 0
