@@ -3,6 +3,8 @@
 # ------------------------------------------------------------------------------
 FROM debian:trixie-slim AS forte-builder
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Basic build deps for 4diac FORTE (POSIX build)
 RUN set -eux; \
   apt-get update; \
@@ -15,18 +17,23 @@ RUN set -eux; \
 
 WORKDIR /usr/src/4diac-forte
 
-# You can pin to a specific tag/branch if you prefer
+# You can pin to a specific tag/branch if you prefer, e.g. v2.2.0
 ARG FORTE_BRANCH=release
 RUN git clone --depth 1 --branch "${FORTE_BRANCH}" \
       https://github.com/eclipse-4diac/4diac-forte.git ./
 
-# Configure & build FORTE for POSIX with SysFs enabled (for Raspberry Pi GPIO)
+# Configure & build FORTE for POSIX with SysFs and Ethernet com layer
 RUN set -eux; \
   mkdir -p build && cd build; \
   cmake -G "Unix Makefiles" \
     -DCMAKE_BUILD_TYPE=Release \
     -DFORTE_ARCHITECTURE=Posix \
     -DFORTE_MODULE_SysFs=ON \
+    -DFORTE_COM_ETH=ON \
+    -DFORTE_COM_LOCAL=ON \
+    -DFORTE_MODULE_CONVERT=ON \
+    -DFORTE_MODULE_UTILS=ON \
+    -DFORTE_MODULE_IEC61131=ON \
     ..; \
   make -j"$(nproc)"; \
   make install DESTDIR=/usr/forte_root
@@ -35,6 +42,8 @@ RUN set -eux; \
 # Runtime stage: vncp-4diac
 # ------------------------------------------------------------------------------
 FROM debian:trixie-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 # ---- Metadata ----
 LABEL org.opencontainers.image.title="vncp-4diac" \
@@ -66,10 +75,10 @@ RUN set -eux; \
 
 VOLUME ["/usr/forte_boot"]
 
-# 4diac FORTE management & optional extra ports
+# 4diac FORTE management & optional extra port
 EXPOSE 61499 61500
 
-# Stay root for install/setup; VNCP entrypoint can drop privileges as needed
+# Stay root; orchestrator / entrypoint can drop privileges if needed
 USER 0
 
 # Healthcheck: verify that FORTE is listening on the configured TCP port
